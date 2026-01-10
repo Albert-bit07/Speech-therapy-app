@@ -1,40 +1,166 @@
 """
-Enhanced data schemas for SpeakBright
-Includes visual cues, progress tracking, and articulation details
+iOS-Compatible Schema Models
+Matches the Swift struct definitions in APIService.swift
 """
 from pydantic import BaseModel, Field
 from typing import List, Optional
 from datetime import datetime
 
+# MARK: - iOS Pronunciation Result Models
+
+class IOSPhonemeResult(BaseModel):
+    """Matches Swift PhonemeResult struct"""
+    phoneme: str = Field(..., description="e.g., '/r/', '/s/', '/th/'")
+    position: int = Field(..., description="Position in word (0-indexed)")
+    score: float = Field(..., ge=0.0, le=1.0, description="0.0 to 1.0")
+    isCorrect: bool = Field(..., alias="isCorrect")
+    expectedSound: Optional[str] = Field(None, alias="expectedSound")
+    actualSound: Optional[str] = Field(None, alias="actualSound")
+    
+    class Config:
+        populate_by_name = True
+
+
+class IOSPronunciationMistake(BaseModel):
+    """Matches Swift PronunciationMistake struct"""
+    phoneme: str
+    position: int
+    severity: str = Field(..., description="minor, moderate, or major")
+    suggestion: str = Field(..., description="How to improve")
+    exampleWords: Optional[List[str]] = Field(None, alias="exampleWords")
+    
+    class Config:
+        populate_by_name = True
+
+
+class IOSPronunciationResult(BaseModel):
+    """
+    Main pronunciation analysis result for iOS
+    Matches Swift PronunciationResult struct
+    """
+    overall_score: float = Field(..., ge=0.0, le=1.0, alias="overall_score")
+    transcribed_text: str = Field(..., alias="transcribed_text")
+    phoneme_analysis: List[IOSPhonemeResult] = Field(..., alias="phoneme_analysis")
+    mistakes: List[IOSPronunciationMistake]
+    feedback: str
+    confidence: float = Field(..., ge=0.0, le=1.0)
+    
+    class Config:
+        populate_by_name = True
+
+
+# MARK: - iOS Session Models
+
+class IOSRewardsEarned(BaseModel):
+    """Matches Swift RewardsEarned struct"""
+    stars: int
+    coins: int
+    experience_points: int = Field(..., alias="experience_points")
+    
+    class Config:
+        populate_by_name = True
+
+
+class IOSPracticeSession(BaseModel):
+    """Matches Swift PracticeSession struct"""
+    user_id: str = Field(..., alias="user_id")
+    session_id: str = Field(..., alias="session_id")
+    timestamp: datetime
+    word: str
+    language: str
+    pronunciation_result: dict = Field(..., alias="pronunciation_result")  # IOSPronunciationResult as dict
+    time_spent: float = Field(..., alias="time_spent")  # Seconds
+    attempt_number: int = Field(..., alias="attempt_number")
+    
+    class Config:
+        populate_by_name = True
+
+
+class IOSSessionResponse(BaseModel):
+    """Matches Swift SessionResponse struct"""
+    session_id: str = Field(..., alias="session_id")
+    saved: bool
+    rewards_earned: IOSRewardsEarned = Field(..., alias="rewards_earned")
+    new_achievements: Optional[List[str]] = Field(None, alias="new_achievements")
+    
+    class Config:
+        populate_by_name = True
+
+
+# MARK: - iOS Progress Models
+
+class IOSDailyProgress(BaseModel):
+    """Matches Swift DailyProgress struct"""
+    date: str  # ISO date string
+    sessions_completed: int = Field(..., alias="sessions_completed")
+    average_score: float = Field(..., alias="average_score")
+    
+    class Config:
+        populate_by_name = True
+
+
+class IOSUserProgress(BaseModel):
+    """Matches Swift UserProgress struct"""
+    user_id: str = Field(..., alias="user_id")
+    total_sessions: int = Field(..., alias="total_sessions")
+    total_stars: int = Field(..., alias="total_stars")
+    total_coins: int = Field(..., alias="total_coins")
+    current_streak: int = Field(..., alias="current_streak")
+    longest_streak: int = Field(..., alias="longest_streak")
+    practice_count: int = Field(..., alias="practice_count")
+    average_accuracy: float = Field(..., alias="average_accuracy")
+    improving_sounds: List[str] = Field(..., alias="improving_sounds")
+    difficulty_sounds: List[str] = Field(..., alias="difficulty_sounds")
+    weekly_progress: List[IOSDailyProgress] = Field(..., alias="weekly_progress")
+    
+    class Config:
+        populate_by_name = True
+
+
+# MARK: - iOS Exercise Models
+
+class IOSExercise(BaseModel):
+    """Matches Swift Exercise struct"""
+    id: str
+    word: str
+    phonetic: str
+    difficulty: int = Field(..., ge=1, le=5)
+    target_phonemes: List[str] = Field(..., alias="target_phonemes")
+    category: str
+    audio_url: Optional[str] = Field(None, alias="audio_url")
+    image_url: Optional[str] = Field(None, alias="image_url")
+    fun_fact: Optional[str] = Field(None, alias="fun_fact")
+    
+    class Config:
+        populate_by_name = True
+
+
+# MARK: - Original Schemas (for web frontend)
+
 class PhonemeFeedback(BaseModel):
-    """
-    Detailed feedback for a single phoneme/sound
-    """
-    phoneme: str = Field(..., description="The sound being analyzed (e.g., 'r', 's', 'th')")
-    expected: str = Field(..., description="Expected pronunciation")
-    confidence: float = Field(..., ge=0.0, le=1.0, description="Confidence score 0-1")
-    tip: str = Field(..., description="Child-friendly articulation tip")
-    visual_cue: str = Field(default="🎯", description="Emoji or icon for visual representation")
-    mouth_position: str = Field(default="neutral", description="Mouth position guide")
-    needs_practice: bool = Field(default=False, description="Whether this sound needs more practice")
-    encouragement: str = Field(..., description="Personalized encouraging message")
+    """Original web frontend model"""
+    phoneme: str
+    expected: str
+    confidence: float = Field(..., ge=0.0, le=1.0)
+    tip: str
+    visual_cue: str = "🎯"
+    mouth_position: str = "neutral"
+    needs_practice: bool = False
+    encouragement: str
+
 
 class Exercise(BaseModel):
-    """
-    Single practice exercise
-    """
-    type: str = Field(..., description="Exercise type: warmup, articulation, coordination, challenge")
-    title: str = Field(..., description="Exercise title")
-    instruction: str = Field(..., description="Step-by-step instruction")
-    phoneme: Optional[str] = Field(None, description="Target phoneme if articulation exercise")
-    level: Optional[str] = Field(None, description="Exercise level: isolation, syllable, word, sentence")
-    repetitions: Optional[int] = Field(None, description="How many times to repeat")
+    """Original web frontend model"""
+    type: str
+    title: str
+    instruction: str
+    phoneme: Optional[str] = None
+    level: Optional[str] = None
+    repetitions: Optional[int] = None
+
 
 class ProgressData(BaseModel):
-    """
-    Track child's progress over time
-    Stored in abstract form only (no audio)
-    """
+    """Original web frontend model"""
     session_date: datetime = Field(default_factory=datetime.now)
     word_practiced: str
     overall_score: int
@@ -42,38 +168,31 @@ class ProgressData(BaseModel):
     phonemes_need_practice: List[str] = Field(default_factory=list)
     session_duration_seconds: Optional[int] = None
 
+
 class AnalysisResponse(BaseModel):
-    """
-    Complete analysis response sent to frontend
-    Child-friendly and encouraging
-    """
-    word: str = Field(..., description="Word that was practiced")
-    overall_score: int = Field(..., ge=0, le=100, description="Overall score 0-100")
-    phoneme_feedback: List[PhonemeFeedback] = Field(..., description="Detailed feedback per phoneme")
-    encouragement: str = Field(..., description="Overall encouraging message")
-    exercises: List[Exercise] = Field(..., description="Personalized practice exercises")
-    
-    # Visual breakdown for UI
-    syllables: List[str] = Field(default_factory=list, description="Word broken into syllables")
-    highlighted_sounds: List[str] = Field(default_factory=list, description="Sounds that need attention")
-    
-    # Progress tracking (optional)
+    """Original web frontend response"""
+    word: str
+    overall_score: int = Field(..., ge=0, le=100)
+    phoneme_feedback: List[PhonemeFeedback]
+    encouragement: str
+    exercises: List[Exercise]
+    syllables: List[str] = Field(default_factory=list)
+    highlighted_sounds: List[str] = Field(default_factory=list)
     progress: Optional[ProgressData] = None
-    celebration: Optional[str] = Field(None, description="Special message for improvements")
+    celebration: Optional[str] = None
+
 
 class MouthPositionGuide(BaseModel):
-    """
-    Visual guide for correct mouth position
-    Used by frontend to show animations/images
-    """
+    """Mouth position guide model"""
     phoneme: str
-    position_name: str  # e.g., "tongue_back", "teeth_together"
+    position_name: str
     image_url: Optional[str] = None
     animation_key: Optional[str] = None
-    description: str  # e.g., "Curl your tongue back like a slide"
-    visual_cue: str  # Emoji representation
+    description: str
+    visual_cue: str
 
-# Mouth position reference data
+
+# Pre-defined mouth positions
 MOUTH_POSITIONS = {
     "tongue_back": MouthPositionGuide(
         phoneme="r",
@@ -106,16 +225,3 @@ MOUTH_POSITIONS = {
         visual_cue="🌬️"
     )
 }
-
-class PrivacyMetadata(BaseModel):
-    """
-    Privacy-compliant metadata
-    NO audio or PII stored
-    """
-    session_id: str
-    timestamp: datetime
-    audio_processed: bool = True
-    audio_deleted: bool = True
-    scores_stored: bool = True
-    coppa_compliant: bool = True
-    gdpr_compliant: bool = True
