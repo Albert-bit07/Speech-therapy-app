@@ -547,11 +547,6 @@ struct NameEditorView: View {
     }
 }
 
-// Extensions for new colors
-extension Color {
-    static let pink = Color(red: 1.0, green: 0.75, blue: 0.80)
-    static let orange = Color(red: 1.0, green: 0.65, blue: 0.30)
-}
 
 #Preview {
     SettingsView()
