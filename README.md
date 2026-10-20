@@ -20,15 +20,14 @@ The interface turns word practice into short monster battles, rewards and progre
 ```mermaid
 flowchart TD
   U[SwiftUI practice game] --> R[Local audio recorder]
-  R --> M[MockAPIService in current GameView]
-  U -. separate API client implementation .-> A[APIService HTTP client]
-  A -. multipart payload accepted; game not connected .-> F[FastAPI routes]
+  R --> A[APIService HTTP client]
+  A --> F[FastAPI routes]
   F --> S[Audio decode and scoring service]
   S --> P[Experimental PocketSphinx scoring]
   F --> D[(In-memory sessions and progress)]
 ```
 
-Source-derived diagram; dotted edges show intended integration, not a verified working path. [GameView.swift](frontend/ChatterQuest/ChatterQuest/ChatterQuest/GameView.swift) calls `MockAPIService`, despite a real [APIService.swift](frontend/ChatterQuest/ChatterQuest/ChatterQuest/APIService.swift) existing. The client sends target word/language as multipart fields; [main.py](backend/main.py) now accepts those fields as well as legacy query parameters. End-to-end backend scoring is therefore **not** demonstrated by a successful game interaction.
+Source-derived diagram. [GameView.swift](frontend/ChatterQuest/ChatterQuest/ChatterQuest/GameView.swift) sends recorded audio through [APIService.swift](frontend/ChatterQuest/ChatterQuest/ChatterQuest/APIService.swift); [main.py](backend/main.py) accepts multipart word/language fields and legacy query parameters. Compilation and controlled API tests do not establish a successful device-to-backend recording or valid pronunciation assessment.
 
 ## Explore the implementation
 
