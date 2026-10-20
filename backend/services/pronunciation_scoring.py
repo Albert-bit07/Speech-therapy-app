@@ -4,6 +4,7 @@ No API keys or subscriptions needed - 100% open source
 Experimental decoder-segment comparison; not validated phoneme alignment
 """
 import os
+import threading
 import numpy as np
 from typing import Dict, List, Tuple
 import logging
@@ -110,6 +111,7 @@ class FreePronunciationScorer:
     
     def __init__(self):
         self.decoder = None
+        self._decode_lock = threading.Lock()
         
         if POCKETSPHINX_AVAILABLE:
             try:
@@ -182,26 +184,29 @@ class FreePronunciationScorer:
 
     
     def score_with_pocketsphinx(self, audio, sr, target_word: str) -> List[Dict]:
-        """
-        Use PocketSphinx for real phoneme recognition
-        """
-        if not self.decoder:
-            return None
-        
+        """Serialize utterances: a decoder owns mutable search and result state."""
+        samples = np.asarray(audio)
+        if sr != 16000 or samples.ndim != 1 or not samples.size:
+            raise ValueError("Expected nonempty mono audio at 16000 Hz")
+        if not np.isfinite(samples).all():
+            raise ValueError("Audio samples must be finite")
+        # process_raw accepts signed PCM samples, not a WAV container. Saturate
+        # before conversion so +1.0 cannot wrap around to a negative sample.
+        pcm = np.clip(np.rint(samples * 32768.0), -32768, 32767).astype("<i2").tobytes()
+        with self._decode_lock:
+            if self.decoder is None:
+                raise ScoringUnavailable("Pronunciation recognizer is unavailable")
+            return self._score_pcm(pcm, target_word)
+
+    def _score_pcm(self, audio_data: bytes, target_word: str) -> List[Dict]:
         try:
-            # Convert audio to required format (16-bit PCM)
-            import soundfile as sf
-            import io
-            
-            buffer = io.BytesIO()
-            sf.write(buffer, audio, sr, format='WAV', subtype='PCM_16')
-            audio_data = buffer.getvalue()
-            
-            # Process audio
             self.decoder.start_utt()
-            self.decoder.process_raw(audio_data, no_search=False, full_utt=True)
-            self.decoder.end_utt()
-            
+            try:
+                self.decoder.process_raw(audio_data, no_search=False, full_utt=True)
+            finally:
+                # Close an opened utterance even if native decoding fails.
+                self.decoder.end_utt()
+
             # Get hypothesis (what was spoken)
             hypothesis = self.decoder.hyp()
             
@@ -248,8 +253,8 @@ class FreePronunciationScorer:
             return phoneme_scores
             
         except Exception as e:
-            logger.error(f"PocketSphinx scoring error: {e}")
-            return None
+            logger.exception("PocketSphinx scoring failed")
+            raise ScoringUnavailable("Pronunciation decoder failed") from e
     
     
 # Global scorer instance
