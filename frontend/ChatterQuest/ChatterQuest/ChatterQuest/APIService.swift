@@ -88,7 +88,7 @@ class APIService {
         request.httpBody = body
         
         do {
-            let (data, response) = try await session.data(for: request)
+            let (data, response) = try await self.session.data(for: request)
             
             guard let httpResponse = response as? HTTPURLResponse else {
                 throw APIError.serverError
@@ -141,7 +141,7 @@ class APIService {
         request.timeoutInterval = APIConfig.timeout
         
         do {
-            let (data, response) = try await session.data(for: request)
+            let (data, response) = try await self.session.data(for: request)
             
             guard let httpResponse = response as? HTTPURLResponse else {
                 throw APIError.serverError
@@ -194,7 +194,7 @@ class APIService {
         do {
             request.httpBody = try encoder.encode(session)
             
-            let (data, response) = try await session.data(for: request)
+            let (data, response) = try await self.session.data(for: request)
             
             guard let httpResponse = response as? HTTPURLResponse else {
                 throw APIError.serverError
@@ -255,7 +255,7 @@ class APIService {
         request.timeoutInterval = APIConfig.timeout
         
         do {
-            let (data, response) = try await session.data(for: request)
+            let (data, response) = try await self.session.data(for: request)
             
             guard let httpResponse = response as? HTTPURLResponse else {
                 throw APIError.serverError
