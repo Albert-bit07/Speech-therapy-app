@@ -7,7 +7,7 @@ from fastapi import HTTPException
 import librosa
 import numpy as np
 from datetime import datetime
-from services.pronunciation_scoring import score_pronunciation
+from services.pronunciation_scoring import score_pronunciation, ScoringUnavailable
 from services.feedback_generator import (
     generate_feedback,
     generate_overall_encouragement,
@@ -130,7 +130,10 @@ async def analyze_speech(
             raise HTTPException(status_code=400, detail="Audio must contain finite samples")
         
         # Step 2: Score pronunciation (phoneme-level)
-        phoneme_scores = score_pronunciation(y, sr, target_word)
+        try:
+            phoneme_scores = score_pronunciation(y, sr, target_word)
+        except ScoringUnavailable as exc:
+            raise HTTPException(status_code=503, detail="Pronunciation analysis is unavailable") from exc
         if not phoneme_scores:
             raise HTTPException(status_code=422, detail="No phonemes available for this word")
         
