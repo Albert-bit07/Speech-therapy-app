@@ -2,7 +2,7 @@
 SpeakBright Backend API - iOS Compatible
 Matches the iOS frontend APIService.swift expectations
 """
-from fastapi import FastAPI, File, UploadFile, Query, Body
+from fastapi import FastAPI, File, UploadFile, Query, Body, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from models.schemas import (
     AnalysisResponse, 
@@ -46,8 +46,10 @@ exercises_db = {}
 @app.post("/api/analyze-pronunciation", response_model=IOSPronunciationResult)
 async def analyze_pronunciation_ios(
     audio: UploadFile = File(...),
-    target_word: str = Query(..., alias="target_word"),
-    language: str = Query(default="en")
+    target_word: Optional[str] = Form(default=None),
+    language: str = Form(default="en"),
+    query_target_word: Optional[str] = Query(default=None, alias="target_word"),
+    query_language: Optional[str] = Query(default=None, alias="language")
 ):
     """
     iOS-compatible pronunciation analysis endpoint
@@ -57,6 +59,11 @@ async def analyze_pronunciation_ios(
     - Multipart form with audio, target_word, language
     - Returns IOSPronunciationResult
     """
+    target_word = (target_word if target_word is not None else query_target_word or "").strip()
+    if not target_word or len(target_word) > 100:
+        raise HTTPException(status_code=422, detail="target_word must contain 1-100 characters")
+    if (query_language or language) != "en":
+        raise HTTPException(status_code=422, detail="Only English analysis is supported")
     # Use our existing analysis but adapt response
     result = await analyze_speech(
         audio,
