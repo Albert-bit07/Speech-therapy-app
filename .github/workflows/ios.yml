@@ -23,3 +23,8 @@ jobs:
           -sdk iphonesimulator
           CODE_SIGNING_ALLOWED=NO
           build
+      - name: Run API client regression scenarios
+        if: matrix.configuration == 'Debug'
+        run: |
+          swiftc frontend/ChatterQuest/ChatterQuest/ChatterQuest/APIService.swift frontend/tests/APIServiceTests.swift -o /tmp/api-client-tests
+          /tmp/api-client-tests

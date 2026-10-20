@@ -2,8 +2,7 @@
 //  APIService.swift
 //  ChatterQuest
 //
-//  UPDATED - Connected to Python Backend
-//  Ready for production with proper error handling
+//  Client for the experimental FastAPI backend
 //
 
 import Foundation
@@ -35,7 +34,11 @@ struct APIConfig {
 class APIService {
     static let shared = APIService()
     
-    private init() {}
+    private let session: URLSession
+
+    init(session: URLSession = .shared) {
+        self.session = session
+    }
     
     // MARK: - Speech Analysis Endpoint
     
@@ -85,7 +88,7 @@ class APIService {
         request.httpBody = body
         
         do {
-            let (data, response) = try await URLSession.shared.data(for: request)
+            let (data, response) = try await session.data(for: request)
             
             guard let httpResponse = response as? HTTPURLResponse else {
                 throw APIError.serverError
@@ -93,6 +96,8 @@ class APIService {
             
             logResponse(httpResponse.statusCode, data)
             
+            if httpResponse.statusCode == 503 { throw APIError.unavailable }
+            if httpResponse.statusCode == 422 { throw APIError.invalidAnalysis }
             guard (200...299).contains(httpResponse.statusCode) else {
                 if let errorMessage = String(data: data, encoding: .utf8) {
                     log("❌ Server error: \(errorMessage)")
@@ -107,6 +112,8 @@ class APIService {
             log("✅ Analysis successful: \(result.overallScore * 100)%")
             return result
             
+        } catch let error as APIError {
+            throw error
         } catch let error as DecodingError {
             log("❌ Decoding error: \(error)")
             throw APIError.decodingError
@@ -134,7 +141,7 @@ class APIService {
         request.timeoutInterval = APIConfig.timeout
         
         do {
-            let (data, response) = try await URLSession.shared.data(for: request)
+            let (data, response) = try await session.data(for: request)
             
             guard let httpResponse = response as? HTTPURLResponse else {
                 throw APIError.serverError
@@ -153,6 +160,8 @@ class APIService {
             log("✅ Progress loaded: \(progress.totalSessions) sessions")
             return progress
             
+        } catch let error as APIError {
+            throw error
         } catch let error as DecodingError {
             log("❌ Decoding error: \(error)")
             throw APIError.decodingError
@@ -185,7 +194,7 @@ class APIService {
         do {
             request.httpBody = try encoder.encode(session)
             
-            let (data, response) = try await URLSession.shared.data(for: request)
+            let (data, response) = try await session.data(for: request)
             
             guard let httpResponse = response as? HTTPURLResponse else {
                 throw APIError.serverError
@@ -207,6 +216,8 @@ class APIService {
         } catch let error as EncodingError {
             log("❌ Encoding error: \(error)")
             throw APIError.decodingError
+        } catch let error as APIError {
+            throw error
         } catch let error as DecodingError {
             log("❌ Decoding error: \(error)")
             throw APIError.decodingError
@@ -244,7 +255,7 @@ class APIService {
         request.timeoutInterval = APIConfig.timeout
         
         do {
-            let (data, response) = try await URLSession.shared.data(for: request)
+            let (data, response) = try await session.data(for: request)
             
             guard let httpResponse = response as? HTTPURLResponse else {
                 throw APIError.serverError
@@ -263,6 +274,8 @@ class APIService {
             log("✅ Loaded \(exercises.count) exercises")
             return exercises
             
+        } catch let error as APIError {
+            throw error
         } catch let error as DecodingError {
             log("❌ Decoding error: \(error)")
             throw APIError.decodingError
@@ -401,6 +414,8 @@ enum APIError: LocalizedError {
     case serverError
     case decodingError
     case unauthorized
+    case unavailable
+    case invalidAnalysis
     
     var errorDescription: String? {
         switch self {
@@ -414,6 +429,10 @@ enum APIError: LocalizedError {
             return "Failed to process response from server."
         case .unauthorized:
             return "Unauthorized access"
+        case .unavailable:
+            return "Pronunciation analysis is unavailable. Please try again later."
+        case .invalidAnalysis:
+            return "This recording or word could not be analyzed. Try another recording."
         }
     }
 }

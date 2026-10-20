@@ -8,11 +8,15 @@
 import SwiftUI
 import AVFoundation
 
+@MainActor
 struct GameView: View {
     @Environment(\.dismiss) var dismiss
     @ObservedObject var rewardsManager: RewardsManager
     @StateObject private var battleState = BattleState()
     
+    @State private var errorMessage: String?
+    @State private var showError = false
+    @State private var processingTask: Task<Void, Never>?
     @State private var isRecording = false
     @State private var showResults = false
     @State private var scale: CGFloat = 1.0
@@ -53,6 +57,16 @@ struct GameView: View {
         .task {
             await loadExercises()
         }
+        .onDisappear {
+            processingTask?.cancel()
+            audioRecorder?.stop()
+            discardRecording()
+        }
+        .alert("Practice unavailable", isPresented: $showError) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text(errorMessage ?? "Please try again.")
+        }
         .sheet(isPresented: $showResults) {
             if let result = pronunciationResult, let exercise = currentExercise {
                 BattleResultsView(
@@ -75,6 +89,10 @@ struct GameView: View {
     @ViewBuilder
     func battleContent(exercise: Exercise) -> some View {
         VStack(spacing: 0) {
+            Text("Experimental scoring · not a clinical assessment")
+                .font(.caption)
+                .foregroundColor(.white)
+                .padding(.top)
             // Top bar
             HStack {
                 Button(action: { dismiss() }) {
@@ -241,23 +259,28 @@ struct GameView: View {
     
     var loadingView: some View {
         VStack(spacing: 20) {
-            ProgressView()
-                .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                .scaleEffect(1.5)
-            
-            Text("Preparing battle...")
-                .font(.headline)
-                .foregroundColor(.white)
+            if let message = errorMessage {
+                Text(message).multilineTextAlignment(.center)
+                Button("Retry") { Task { await loadExercises() } }
+            } else {
+                ProgressView().tint(.white)
+                Text("Preparing battle...")
+            }
+            Button("Close") { dismiss() }
         }
+        .foregroundColor(.white)
+        .padding()
     }
-    
+
     // MARK: - Audio Recording
     
     func startRecording() {
         AVAudioSession.sharedInstance().requestRecordPermission { granted in
-            if granted {
-                DispatchQueue.main.async {
+            DispatchQueue.main.async {
+                if granted {
                     self.setupRecording()
+                } else {
+                    self.reportError("Allow microphone access in Settings to record practice audio.")
                 }
             }
         }
@@ -270,7 +293,7 @@ struct GameView: View {
             try audioSession.setCategory(.playAndRecord, mode: .default)
             try audioSession.setActive(true)
             
-            let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            let documentsPath = FileManager.default.temporaryDirectory
             let audioFilename = documentsPath.appendingPathComponent("recording_\(UUID().uuidString).wav")
             
             let settings = [
@@ -281,9 +304,13 @@ struct GameView: View {
             ]
             
             audioRecorder = try AVAudioRecorder(url: audioFilename, settings: settings)
-            audioRecorder?.record()
-            
             recordedAudioURL = audioFilename
+            guard audioRecorder?.record() == true else {
+                discardRecording()
+                reportError("Recording could not start. Please try again.")
+                return
+            }
+
             isRecording = true
             
             withAnimation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true)) {
@@ -291,7 +318,8 @@ struct GameView: View {
             }
             
         } catch {
-            print("Failed to set up recording: \(error)")
+            discardRecording()
+            reportError("Recording could not start. Please check microphone access.")
         }
     }
     
@@ -301,7 +329,7 @@ struct GameView: View {
         recordingPulse = false
         
         if let audioURL = recordedAudioURL {
-            Task {
+            processingTask = Task {
                 await processRecording(audioURL: audioURL)
             }
         }
@@ -311,14 +339,18 @@ struct GameView: View {
         guard let exercise = currentExercise else { return }
         
         isProcessing = true
-        
+        defer {
+            isProcessing = false
+            discardRecording()
+        }
+
         do {
             let audioData = try Data(contentsOf: audioURL)
             
-            // Use mock API for development
-            let result = await MockAPIService.shared.mockAnalyzePronunciation(
-                targetWord: exercise.word
+            let result = try await APIService.shared.analyzePronunciation(
+                audioData: audioData, targetWord: exercise.word
             )
+            try Task.checkCancellation()
             
             // Apply damage to monster
             battleState.attack(accuracy: result.overallScore)
@@ -345,22 +377,45 @@ struct GameView: View {
             }
             
         } catch {
-            print("Error processing recording: \(error)")
-            isProcessing = false
+            if !Task.isCancelled { reportError(error.localizedDescription) }
         }
     }
     
     // MARK: - Exercise Management
     
     func loadExercises() async {
-        exercises = await MockAPIService.shared.mockGetAdaptiveExercises(count: 5)
-        
-        if !exercises.isEmpty {
-            currentExercise = exercises[0]
-            battleState.startBattle(word: exercises[0].word)
+        errorMessage = nil
+        do {
+            exercises = try await APIService.shared.getAdaptiveExercises(userId: "ios_user", count: 5)
+            try Task.checkCancellation()
+            guard let first = exercises.first else {
+                errorMessage = "No exercises are available. Please try again later."
+                return
+            }
+            currentExercise = first
+            battleState.startBattle(word: first.word)
+        } catch {
+            if !Task.isCancelled { errorMessage = error.localizedDescription }
         }
     }
     
+    private func reportError(_ message: String) {
+        errorMessage = message
+        showError = true
+    }
+
+    private func discardRecording() {
+        if let url = recordedAudioURL {
+            do { try FileManager.default.removeItem(at: url) }
+            catch { print("Could not remove temporary recording: \(error.localizedDescription)") }
+        }
+        recordedAudioURL = nil
+        audioRecorder = nil
+        isRecording = false
+        recordingPulse = false
+        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+    }
+
     func moveToNextExercise() {
         showResults = false
         attemptNumber = 1
