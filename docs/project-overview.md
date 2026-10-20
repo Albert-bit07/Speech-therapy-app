@@ -13,8 +13,8 @@ The iOS adapter rescales scores to 0–1 and sets `transcribed_text` to the supp
 - GameView uses MockAPIService for analysis and exercises. The separate real client sends multipart word/language fields while FastAPI declares query parameters; requests need contract alignment.
 - Audio bytes are passed through `buf_to_float` and then into `librosa.load`. Encoded WAV/recording bytes need a verified decoder path; current compatibility has not been established.
 - The scorer marks mock/PocketSphinx provenance, but the feedback mapper and iOS adapter do not preserve those flags in the public result. A caller cannot reliably distinguish fallback scoring from recognition using that result.
-- Progress history stores Pydantic objects, while a comparison path uses dictionary `.get`. Repeat analysis with progress enabled needs regression coverage.
-- Separate in-memory session/progress stores are not reconciled. Streaks return constants and weekly data is generated from placeholders. Achievement lookup uses user ID against a session-ID-keyed dictionary.
+- The Pydantic history access bug is repaired and covered by repeat-attempt regression tests.
+- iOS progress now aggregates accepted iOS session records, with UTC calendar streaks, real weekly counts and duplicate-safe session IDs. The web analysis history remains a separate in-memory store. Neither store is durable or authenticated.
 
 These are source-inspection findings, not observed runtime traces. No fixes to application behavior are included here.
 
