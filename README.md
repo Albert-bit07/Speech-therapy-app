@@ -60,9 +60,9 @@ The original README linked [this author-provided YouTube recording](https://yout
 
 ## Limits and verification
 
-The backend suite passes four tests locally and in Python 3.11 CI using the declared requirements: generated WAV decoding, repeat-attempt progress, invalid audio, and multipart/query compatibility. Scoring is controlled in tests. No Swift build, real pronunciation-accuracy evaluation or full app demonstration was verified; Xcode is unavailable in this Linux environment.
+The backend suite passes eight tests locally and in Python 3.11 CI using the declared requirements: generated WAV decoding, repeat-attempt progress, invalid audio, and multipart/query compatibility. Scoring is controlled in tests. No Swift build, real pronunciation-accuracy evaluation or full app demonstration was verified; Xcode is unavailable in this Linux environment.
 
-The backend has no authentication or durable database. iOS analysis uses a fixed `ios_user` and disables progress recording. Streaks and weekly histories contain placeholders. Audio decoding and request-format defects have regression coverage; real model output and complete game integration still need validation. No clinical dataset, train/test split, phoneme accuracy, therapy outcome or privacy-compliance validation is provided. Use synthetic/non-sensitive recordings only. Repository configuration includes a tracked `.env`; do not copy its contents into documentation or deployment settings.
+The backend has no authentication or durable database. iOS analysis uses a fixed `ios_user` and disables progress recording. iOS progress now derives counts, rewards, streaks and weekly activity from accepted session records; empty history stays empty. Audio decoding and request-format defects have regression coverage; real model output and complete game integration still need validation. No clinical dataset, train/test split, phoneme accuracy, therapy outcome or privacy-compliance validation is provided. Use synthetic/non-sensitive recordings only. Repository configuration includes a tracked `.env`; do not copy its contents into documentation or deployment settings.
 
 ## Audio/progress repair — 2026-10-20
 
@@ -71,3 +71,11 @@ The backend now decodes uploaded containers through a byte stream rather than in
 Run `PYTHONPATH=backend python -m unittest discover -s backend/tests -v`. Tests use an actual generated WAV and controlled scorer output. The game still uses mock analysis; authentic transcription/scoring, persistent progress and device validation remain outstanding.
 
 The iOS endpoint also accepts multipart `target_word`/`language` fields used by APIService.swift while retaining legacy query parameters. Missing/blank words and non-English requests are rejected. Two ASGI contract tests cover the client payload and legacy query path; these mock the analysis service and are not device or model validation. Install `httpx==0.27.2` with the declared backend requirements to run them.
+
+## Observed session progress
+
+`POST /api/sessions` validates the reported score and timing fields before saving. The client-supplied session ID is scoped by user: identical retries reuse the record, conflicting reuse returns 409, and retries do not increase server-side totals or repeat achievement notifications. `GET /api/progress/{user_id}` derives counts, average scores, rewards and weekly summaries from those records.
+
+Practice dates use UTC. Multiple sessions on one day count once toward streak length; the current streak can end today or yesterday, while a longer gap resets it. Empty history returns zero counts, zero streaks and seven empty days. Sound-improvement lists remain empty until supported by real per-sound history.
+
+These are summaries of client-reported sessions, not verified pronunciation measurements. Storage is in memory, unauthenticated user IDs are not an authorization boundary, and sessions disappear on restart. The game still calls its mock API. Four additional ASGI/regression tests cover empty history, real aggregates, duplicate/conflicting sessions, user isolation, calendar gaps and input rejection. No iOS device or scoring-quality validation is implied.

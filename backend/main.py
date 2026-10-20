@@ -19,7 +19,7 @@ from models.schemas import (
 from services.speech_analysis import analyze_speech, get_user_progress_summary
 from services.exercise_generator import get_home_practice_tips, generate_exercises
 from typing import Optional, List
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 import uuid
 
 app = FastAPI(
@@ -112,26 +112,22 @@ async def get_progress_ios(user_id: str):
     
     Returns comprehensive user progress data
     """
-    summary = get_user_progress_summary(user_id)
-    
-    # Convert to iOS format
+    sessions = user_sessions(user_id)
+    scores = [session['result']['overall_score'] for session in sessions]
     ios_progress = IOSUserProgress(
         user_id=user_id,
-        total_sessions=summary.get("total_sessions", 0),
-        total_stars=summary.get("total_sessions", 0) * 3,  # 3 stars per session
-        total_coins=summary.get("total_sessions", 0) * 10,  # 10 coins per session
+        total_sessions=len(sessions),
+        total_stars=sum(rewards_for(score)['stars'] for score in scores),
+        total_coins=sum(rewards_for(score)['coins'] for score in scores),
         current_streak=calculate_streak(user_id),
         longest_streak=calculate_longest_streak(user_id),
-        practice_count=summary.get("total_sessions", 0),
-        average_accuracy=summary.get("average_score", 0) / 100.0,
-        improving_sounds=list(set([
-            p for recent in summary.get("recent_improvements", [])
-            for p in recent
-        ]))[:5],
-        difficulty_sounds=summary.get("still_practicing", [])[:5],
+        practice_count=len(sessions),
+        average_accuracy=sum(scores) / len(scores) if scores else 0,
+        improving_sounds=[],
+        difficulty_sounds=[],
         weekly_progress=generate_weekly_progress(user_id)
     )
-    
+
     return ios_progress
 
 
@@ -142,31 +138,32 @@ async def save_session_ios(session: IOSPracticeSession):
     
     Saves practice session and returns rewards
     """
-    session_id = str(uuid.uuid4())
-    
-    # Store session
-    sessions_db[session_id] = {
-        "user_id": session.user_id,
-        "timestamp": session.timestamp,
-        "word": session.word,
-        "result": session.pronunciation_result,
-        "time_spent": session.time_spent
+    accuracy = session.pronunciation_result.get('overall_score')
+    import math
+    if isinstance(accuracy, bool) or not isinstance(accuracy, (int, float)) or not math.isfinite(accuracy) or not 0 <= accuracy <= 1:
+        raise HTTPException(status_code=422, detail='overall_score must be finite and between 0 and 1')
+    if session.time_spent < 0 or not math.isfinite(session.time_spent) or session.attempt_number < 1:
+        raise HTTPException(status_code=422, detail='Invalid session duration or attempt number')
+    if not session.user_id.strip() or not session.session_id.strip():
+        raise HTTPException(status_code=422, detail='User and session IDs must not be empty')
+    timestamp = session.timestamp.replace(tzinfo=timezone.utc) if session.timestamp.tzinfo is None else session.timestamp.astimezone(timezone.utc)
+    if timestamp > datetime.now(timezone.utc) + timedelta(minutes=5):
+        raise HTTPException(status_code=422, detail='Session timestamp is in the future')
+    session_id = session.session_id
+    key = (session.user_id, session_id)
+    record = {
+        'user_id': session.user_id, 'timestamp': timestamp, 'word': session.word,
+        'result': session.pronunciation_result, 'time_spent': session.time_spent,
+        'language': session.language, 'attempt_number': session.attempt_number,
     }
-    
-    # Calculate rewards based on accuracy
-    accuracy = session.pronunciation_result["overall_score"]
-    stars = 3 if accuracy >= 0.90 else 2 if accuracy >= 0.75 else 1
-    coins = int(accuracy * 100)
-    xp = int(accuracy * 50)
-    
-    rewards = IOSRewardsEarned(
-        stars=stars,
-        coins=coins,
-        experience_points=xp
-    )
-    
+    previous = sessions_db.get(key)
+    if previous is not None and previous != record:
+        raise HTTPException(status_code=409, detail='Session ID already used for different content')
+    sessions_db[key] = record
+    rewards = IOSRewardsEarned(**rewards_for(accuracy))
+
     # Check for new achievements
-    achievements = check_achievements(session.user_id)
+    achievements = [] if previous is not None else check_achievements(session.user_id)
     
     response = IOSSessionResponse(
         session_id=session_id,
@@ -396,52 +393,56 @@ async def health_check():
 
 # MARK: - Helper Functions
 
-def calculate_streak(user_id: str) -> int:
-    """Calculate current practice streak"""
-    # TODO: Implement actual streak calculation
-    return 3
+def user_sessions(user_id: str) -> list:
+    return [session for session in sessions_db.values() if session['user_id'] == user_id]
+
+
+def rewards_for(score: float) -> dict:
+    return {'stars': 3 if score >= 0.90 else 2 if score >= 0.75 else 1,
+            'coins': int(score * 100), 'experience_points': int(score * 50)}
+
+
+def practice_dates(user_id: str) -> set:
+    return {session['timestamp'].date() for session in user_sessions(user_id)}
+
+
+def calculate_streak(user_id: str, today=None) -> int:
+    today = today or datetime.now(timezone.utc).date()
+    dates = practice_dates(user_id)
+    cursor = today if today in dates else today - timedelta(days=1)
+    streak = 0
+    while cursor in dates:
+        streak += 1
+        cursor -= timedelta(days=1)
+    return streak
 
 
 def calculate_longest_streak(user_id: str) -> int:
-    """Calculate longest practice streak"""
-    # TODO: Implement actual longest streak
-    return 7
+    longest = current = 0
+    previous = None
+    for day in sorted(practice_dates(user_id)):
+        current = current + 1 if previous is not None and day - previous == timedelta(days=1) else 1
+        longest = max(longest, current)
+        previous = day
+    return longest
 
 
-def generate_weekly_progress(user_id: str) -> List[dict]:
-    """Generate weekly progress data"""
-    from datetime import timedelta
-    
-    today = datetime.now()
+def generate_weekly_progress(user_id: str, today=None) -> List[dict]:
+    today = today or datetime.now(timezone.utc).date()
+    sessions = user_sessions(user_id)
     progress = []
-    
-    for i in range(7):
-        date = today - timedelta(days=6-i)
-        progress.append({
-            "date": date.strftime("%Y-%m-%d"),
-            "sessions_completed": 1 if i % 2 == 0 else 0,
-            "average_score": 0.85 if i % 2 == 0 else 0.0
-        })
-    
+    for offset in range(6, -1, -1):
+        day = today - timedelta(days=offset)
+        scores = [session['result']['overall_score'] for session in sessions if session['timestamp'].date() == day]
+        progress.append({'date': day.isoformat(), 'sessions_completed': len(scores),
+                         'average_score': sum(scores) / len(scores) if scores else 0})
     return progress
 
 
 def check_achievements(user_id: str) -> List[str]:
-    """Check for new achievements"""
-    achievements = []
-    
-    # Check session count
-    if user_id in sessions_db:
-        session_count = len([s for s in sessions_db.values() if s["user_id"] == user_id])
-        
-        if session_count == 1:
-            achievements.append("First Practice!")
-        elif session_count == 10:
-            achievements.append("Practice Master!")
-        elif session_count == 50:
-            achievements.append("Speech Champion!")
-    
-    return achievements
+    milestones = {1: 'First Practice!', 10: 'Practice Master!', 50: 'Speech Champion!'}
+    achievement = milestones.get(len(user_sessions(user_id)))
+    return [achievement] if achievement else []
 
 
 # MARK: - Startup
