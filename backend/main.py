@@ -75,7 +75,7 @@ async def analyze_pronunciation_ios(
     # Convert to iOS format
     ios_result = IOSPronunciationResult(
         overall_score=result["overall_score"] / 100.0,  # Convert to 0-1
-        transcribed_text=target_word.lower(),
+        transcribed_text=result.get("transcribed_text", ""),
         phoneme_analysis=[
             {
                 "phoneme": f"/{p['phoneme']}/",
@@ -83,7 +83,7 @@ async def analyze_pronunciation_ios(
                 "score": p["confidence"],
                 "isCorrect": p["confidence"] >= 0.75,
                 "expectedSound": p["phoneme"],
-                "actualSound": p["phoneme"] if p["confidence"] >= 0.75 else "?"
+                "actualSound": p.get("detected", "")
             }
             for i, p in enumerate(result["phoneme_feedback"])
         ],
@@ -93,7 +93,7 @@ async def analyze_pronunciation_ios(
                 "position": i,
                 "severity": "major" if p["confidence"] < 0.60 else "moderate" if p["confidence"] < 0.75 else "minor",
                 "suggestion": p["tip"],
-                "exampleWords": ["practice", "with", "these"]
+                "exampleWords": []
             }
             for i, p in enumerate(result["phoneme_feedback"])
             if p["needs_practice"]

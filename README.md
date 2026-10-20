@@ -7,7 +7,7 @@ The interface turns word practice into short monster battles, rewards and progre
 - SwiftUI screens implement onboarding, word practice, battles, rewards and parent views.
 - GameView records audio with AVAudioRecorder, then currently calls a **mock** analysis service.
 - A separate Python API defines audio-analysis, session, progress and exercise routes.
-- Backend scoring attempts PocketSphinx and can fall back to randomized mock scores; exercises and feedback use predefined rules and content.
+- Backend scoring attempts PocketSphinx and returns an unavailable error when it cannot initialize; exercises and feedback use predefined rules and content.
 
 **Ownership:** collaborative work by Albert Mejooli and frontend contributors visible in history. Albert's commits cover [backend implementation](https://github.com/Albert-bit07/Speech-therapy-app/commits/main/backend); frontend/game and demo contributions are shared.
 
@@ -24,7 +24,7 @@ flowchart TD
   U -. separate API client implementation .-> A[APIService HTTP client]
   A -. multipart payload accepted; game not connected .-> F[FastAPI routes]
   F --> S[Audio decode and scoring service]
-  S --> P[PocketSphinx attempt or mock fallback]
+  S --> P[Experimental PocketSphinx scoring]
   F --> D[(In-memory sessions and progress)]
 ```
 
@@ -36,7 +36,7 @@ Source-derived diagram; dotted edges show intended integration, not a verified w
 |---|---|
 | HTTP request/response models | [Backend routes](backend/main.py), [schemas](backend/models/schemas.py) |
 | Audio and progress pipeline | [speech_analysis.py](backend/services/speech_analysis.py) |
-| PocketSphinx and mock scoring | [pronunciation_scoring.py](backend/services/pronunciation_scoring.py) |
+| Experimental pronunciation scoring | [pronunciation_scoring.py](backend/services/pronunciation_scoring.py) |
 | Rule-based feedback and exercises | [Feedback](backend/services/feedback_generator.py), [exercises](backend/services/exercise_generator.py) |
 | Game and local rewards | [GameView](frontend/ChatterQuest/ChatterQuest/ChatterQuest/GameView.swift), [rewards](frontend/ChatterQuest/ChatterQuest/ChatterQuest/Rewardssystem.swift) |
 
@@ -60,7 +60,7 @@ The original README linked [this author-provided YouTube recording](https://yout
 
 ## Limits and verification
 
-The backend suite passes eight tests locally and in Python 3.11 CI using the declared requirements: generated WAV decoding, repeat-attempt progress, invalid audio, and multipart/query compatibility. Scoring is controlled in tests. No Swift build, real pronunciation-accuracy evaluation or full app demonstration was verified; Xcode is unavailable in this Linux environment.
+The backend suite has eleven tests, with Python 3.11 CI using the declared requirements: generated WAV decoding, repeat-attempt progress, invalid audio, and multipart/query compatibility. Scoring is controlled in tests. No Swift build, real pronunciation-accuracy evaluation or full app demonstration was verified; Xcode is unavailable in this Linux environment.
 
 The backend has no authentication or durable database. iOS analysis uses a fixed `ios_user` and disables progress recording. iOS progress now derives counts, rewards, streaks and weekly activity from accepted session records; empty history stays empty. Audio decoding and request-format defects have regression coverage; real model output and complete game integration still need validation. No clinical dataset, train/test split, phoneme accuracy, therapy outcome or privacy-compliance validation is provided. Use synthetic/non-sensitive recordings only. Repository configuration includes a tracked `.env`; do not copy its contents into documentation or deployment settings.
 
@@ -79,3 +79,9 @@ The iOS endpoint also accepts multipart `target_word`/`language` fields used by 
 Practice dates use UTC. Multiple sessions on one day count once toward streak length; the current streak can end today or yesterday, while a longer gap resets it. Empty history returns zero counts, zero streaks and seven empty days. Sound-improvement lists remain empty until supported by real per-sound history.
 
 These are summaries of client-reported sessions, not verified pronunciation measurements. Storage is in memory, unauthenticated user IDs are not an authorization boundary, and sessions disappear on restart. The game still calls its mock API. Four additional ASGI/regression tests cover empty history, real aggregates, duplicate/conflicting sessions, user isolation, calendar gaps and input rejection. No iOS device or scoring-quality validation is implied.
+
+## Scoring availability and provenance
+
+Backend scoring no longer substitutes randomized output when PocketSphinx is missing or cannot initialize. Analysis returns HTTP 503 and saves no progress in that case; a configured recognizer with no usable result produces no scores. Random jitter was removed from the remaining comparison heuristic. The iOS adapter returns an empty transcript/actual-sound field when none was recognized, rather than echoing the target as observed speech.
+
+This does **not** validate the PocketSphinx scoring algorithm: decoder segmentation, phoneme alignment, acoustic-score interpretation and confidence calibration still need correction and evaluation. The Swift game continues to use its independent mock service. Tests verify unavailable/error behavior and deterministic calculations, not real pronunciation accuracy. A missing scorer now makes the backend feature explicitly unavailable instead of appearing to work with invented scores.

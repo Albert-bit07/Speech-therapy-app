@@ -4,7 +4,7 @@
 
 ## Pipeline and design decisions
 
-The backend [analyze_speech](../backend/services/speech_analysis.py) reads uploaded bytes, attempts librosa processing at 16 kHz, invokes a pronunciation scorer, generates rule-based feedback/exercises, and optionally appends abstract progress objects in memory. The [scorer](../backend/services/pronunciation_scoring.py) attempts PocketSphinx model loading and recognizes speech, then compares expected sounds with decoder segments. Its confidence is heuristic and includes random variation. Failure/no result can switch to mock scoring. This is neither a validated phoneme alignment system nor model training.
+The backend [analyze_speech](../backend/services/speech_analysis.py) reads uploaded bytes, attempts librosa processing at 16 kHz, invokes a pronunciation scorer, generates rule-based feedback/exercises, and optionally appends abstract progress objects in memory. The [scorer](../backend/services/pronunciation_scoring.py) attempts PocketSphinx model loading and recognizes speech, then compares expected sounds with decoder segments. Its confidence remains an unvalidated heuristic. Random variation and automatic mock fallback have been removed; an unavailable recognizer returns 503 and does not save progress. This is neither a validated phoneme alignment system nor model training.
 
 The iOS adapter rescales scores to 0–1 and sets `transcribed_text` to the supplied target word. It is **not** independent transcription evidence. A `language` parameter exists but does not establish multilingual scoring. Dictionaries, preset words and hand-authored feedback define the practical content scope.
 
@@ -12,7 +12,7 @@ The iOS adapter rescales scores to 0–1 and sets `transcribed_text` to the supp
 
 - GameView uses MockAPIService for analysis and exercises. The separate real client sends multipart word/language fields while FastAPI declares query parameters; requests need contract alignment.
 - Audio bytes are passed through `buf_to_float` and then into `librosa.load`. Encoded WAV/recording bytes need a verified decoder path; current compatibility has not been established.
-- The scorer marks mock/PocketSphinx provenance, but the feedback mapper and iOS adapter do not preserve those flags in the public result. A caller cannot reliably distinguish fallback scoring from recognition using that result.
+- The backend no longer returns fallback scores. The iOS game still uses a separate mock service, and the remaining decoder-based scoring path is not validated phoneme alignment.
 - The Pydantic history access bug is repaired and covered by repeat-attempt regression tests.
 - iOS progress now aggregates accepted iOS session records, with UTC calendar streaks, real weekly counts and duplicate-safe session IDs. The web analysis history remains a separate in-memory store. Neither store is durable or authenticated.
 

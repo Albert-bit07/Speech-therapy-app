@@ -13,6 +13,8 @@ class IOSContractTests(unittest.IsolatedAsyncioTestCase):
                     self.assertEqual(response.status_code, 200, response.text)
                     self.assertEqual(analyze.call_args.args[1], 'rain')
                     self.assertEqual(response.json()['overall_score'], 0.8)
+                    self.assertEqual(response.json()['transcribed_text'], '')
+                    self.assertEqual(response.json()['phoneme_analysis'][0]['actualSound'], '')
 
     async def test_requires_nonempty_word(self):
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url='http://test') as client:

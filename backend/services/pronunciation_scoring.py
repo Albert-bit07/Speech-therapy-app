@@ -1,7 +1,7 @@
 """
 FREE pronunciation scoring using PocketSphinx
 No API keys or subscriptions needed - 100% open source
-Uses CMUSphinx for phoneme-level pronunciation assessment
+Experimental decoder-segment comparison; not validated phoneme alignment
 """
 import os
 import numpy as np
@@ -16,7 +16,7 @@ try:
     from pocketsphinx import Pocketsphinx, get_model_path
     POCKETSPHINX_AVAILABLE = True
 except ImportError:
-    logger.warning("PocketSphinx not installed. Using fallback scoring.")
+    logger.warning("PocketSphinx not installed. Pronunciation scoring is unavailable.")
     POCKETSPHINX_AVAILABLE = False
 
 # Comprehensive phoneme mappings (CMU ARPAbet to simple representation)
@@ -132,7 +132,7 @@ class FreePronunciationScorer:
                 logger.error(f"PocketSphinx initialization failed: {e}")
                 self.decoder = None
         else:
-            logger.warning("PocketSphinx not available. Using enhanced mock scoring.")
+            logger.warning("PocketSphinx not available. Pronunciation scoring is unavailable.")
     
     
     def calculate_phoneme_confidence(
@@ -143,7 +143,7 @@ class FreePronunciationScorer:
     ) -> float:
         """
         Calculate confidence score for a phoneme
-        Uses Goodness of Pronunciation (GOP) approach
+        Heuristic similarity mapping; not calibrated Goodness of Pronunciation
         """
         # Check for exact match
         if expected_phoneme == detected_phoneme:
@@ -178,12 +178,8 @@ class FreePronunciationScorer:
             acoustic_factor = min(1.0, max(0.0, (acoustic_score + 5000) / 5000))
             base_confidence = (base_confidence + acoustic_factor) / 2
         
-        # Add small random variation for realism
-        variation = np.random.uniform(-0.03, 0.03)
-        confidence = np.clip(base_confidence + variation, 0.5, 1.0)
-        
-        return round(confidence, 2)
-    
+        return round(float(np.clip(base_confidence, 0.5, 1.0)), 2)
+
     
     def score_with_pocketsphinx(self, audio, sr, target_word: str) -> List[Dict]:
         """
@@ -256,70 +252,6 @@ class FreePronunciationScorer:
             return None
     
     
-    def enhanced_mock_scoring(self, audio, sr, target_word: str) -> List[Dict]:
-        """
-        Enhanced mock scoring when PocketSphinx unavailable
-        Uses audio features for more realistic scores
-        """
-        expected_phonemes = WORD_PHONEMES.get(target_word.lower(), ["UNK"])
-        phoneme_scores = []
-        
-        # Extract basic audio features for variation
-        try:
-            import librosa
-            
-            # Get audio energy (loudness)
-            energy = np.sum(audio ** 2) / len(audio)
-            
-            # Get spectral features
-            spectral_centroid = np.mean(librosa.feature.spectral_centroid(y=audio, sr=sr))
-            
-            # Normalize to 0-1 range
-            energy_norm = min(1.0, energy * 1000)
-            spectral_norm = min(1.0, spectral_centroid / 4000)
-            
-            quality_factor = (energy_norm + spectral_norm) / 2
-            
-        except Exception as e:
-            logger.warning(f"Audio feature extraction failed: {e}")
-            quality_factor = 0.75  # Default
-        
-        # Difficult sounds for children
-        difficult_sounds = {"R", "TH", "L", "S"}
-        
-        for i, cmu_phoneme in enumerate(expected_phonemes):
-            # Base confidence depends on phoneme difficulty
-            if cmu_phoneme in difficult_sounds:
-                base_confidence = np.random.uniform(0.60, 0.80)
-            else:
-                base_confidence = np.random.uniform(0.75, 0.92)
-            
-            # Adjust by audio quality
-            confidence = base_confidence * (0.5 + 0.5 * quality_factor)
-            
-            # Add position-based variation (words get harder toward middle)
-            position_factor = 1.0 - 0.15 * abs(i - len(expected_phonemes)/2) / len(expected_phonemes)
-            confidence *= position_factor
-            
-            # Clip to valid range
-            confidence = round(np.clip(confidence, 0.50, 0.95), 2)
-            
-            # Convert to simple representation
-            simple_phoneme = CMU_TO_SIMPLE.get(cmu_phoneme, cmu_phoneme.lower())
-            
-            phoneme_scores.append({
-                "phoneme": simple_phoneme,
-                "expected": simple_phoneme,
-                "confidence": confidence,
-                "detected": cmu_phoneme,
-                "is_mock": True,
-                "quality_factor": round(quality_factor, 2)
-            })
-        
-        logger.info(f"Enhanced mock scoring: {len(phoneme_scores)} phonemes")
-        return phoneme_scores
-
-
 # Global scorer instance
 _scorer = None
 
@@ -331,26 +263,16 @@ def get_scorer():
     return _scorer
 
 
+class ScoringUnavailable(RuntimeError):
+    """The configured recognizer cannot perform an analysis."""
+
+
 def score_pronunciation(audio, sr, target_word: str) -> List[Dict]:
-    """
-    Main scoring function - FREE, no API key needed
-    
-    Tries PocketSphinx first, falls back to enhanced mock scoring
-    
-    Returns list of phoneme scores with confidence levels
-    """
+    """Return experimental recognizer-derived scores, never randomized fallback scores."""
     scorer = get_scorer()
-    
-    # Try PocketSphinx first
-    if POCKETSPHINX_AVAILABLE and scorer.decoder:
-        pocketsphinx_scores = scorer.score_with_pocketsphinx(audio, sr, target_word)
-        if pocketsphinx_scores:
-            logger.info(f"✓ Using PocketSphinx (FREE) for {target_word}")
-            return pocketsphinx_scores
-    
-    # Fallback to enhanced mock scoring
-    logger.info(f"Using enhanced mock scoring for {target_word}")
-    return scorer.enhanced_mock_scoring(audio, sr, target_word)
+    if not POCKETSPHINX_AVAILABLE or scorer.decoder is None:
+        raise ScoringUnavailable('Pronunciation recognizer is unavailable')
+    return scorer.score_with_pocketsphinx(audio, sr, target_word) or []
 
 
 def validate_scoring_results(scores: List[Dict]) -> bool:
@@ -399,7 +321,7 @@ if __name__ == "__main__":
         print("✗ PocketSphinx not installed")
         print("\nTo install (free):")
         print("  pip install pocketsphinx")
-        print("\nUsing enhanced mock scoring in the meantime.")
+        print("\nScoring remains unavailable until the recognizer is configured.")
     
     print(f"\nSupported words: {len(WORD_PHONEMES)}")
     print(f"Sample words: {list(WORD_PHONEMES.keys())[:5]}")
