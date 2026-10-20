@@ -22,13 +22,13 @@ flowchart TD
   U[SwiftUI practice game] --> R[Local audio recorder]
   R --> M[MockAPIService in current GameView]
   U -. separate API client implementation .-> A[APIService HTTP client]
-  A -. integration contract needs repair .-> F[FastAPI routes]
+  A -. multipart payload accepted; game not connected .-> F[FastAPI routes]
   F --> S[Audio decode and scoring service]
   S --> P[PocketSphinx attempt or mock fallback]
   F --> D[(In-memory sessions and progress)]
 ```
 
-Source-derived diagram; dotted edges show intended integration, not a verified working path. [GameView.swift](frontend/ChatterQuest/ChatterQuest/ChatterQuest/GameView.swift) calls `MockAPIService`, despite a real [APIService.swift](frontend/ChatterQuest/ChatterQuest/ChatterQuest/APIService.swift) existing. The latter sends target word/language as multipart fields, while [main.py](backend/main.py) expects them as query parameters. End-to-end backend scoring is therefore **not** demonstrated by a successful game interaction.
+Source-derived diagram; dotted edges show intended integration, not a verified working path. [GameView.swift](frontend/ChatterQuest/ChatterQuest/ChatterQuest/GameView.swift) calls `MockAPIService`, despite a real [APIService.swift](frontend/ChatterQuest/ChatterQuest/ChatterQuest/APIService.swift) existing. The client sends target word/language as multipart fields; [main.py](backend/main.py) now accepts those fields as well as legacy query parameters. End-to-end backend scoring is therefore **not** demonstrated by a successful game interaction.
 
 ## Explore the implementation
 
@@ -42,7 +42,7 @@ Source-derived diagram; dotted edges show intended integration, not a verified w
 
 ## Setup
 
-Use macOS/Xcode for iOS; the backend requirements are pinned to older packages and need a compatible Python environment (Python 3.10 or 3.11 is a reasonable starting point, **not verified here**). From the repository root:
+Use macOS/Xcode for iOS; the backend requirements are pinned to older packages and need a compatible Python environment (Python 3.11 is exercised by CI). From the repository root:
 
 ```bash
 python3.11 -m venv .venv
@@ -52,7 +52,7 @@ cd backend
 python -m uvicorn main:app --host 127.0.0.1 --port 8000
 ```
 
-Then inspect `/health` and `/docs`. Open `frontend/ChatterQuest/ChatterQuest/ChatterQuest.xcodeproj` in Xcode, select a simulator and configure signing/permissions as needed. Simulator and physical-device localhost differ; the API client has a local URL. These commands are a source-derived starting point, not an executed installation or working integration guarantee. See [known blockers](docs/project-overview.md) before testing audio uploads.
+Then inspect `/health` and `/docs`. Open `frontend/ChatterQuest/ChatterQuest/ChatterQuest.xcodeproj` in Xcode, select a simulator and configure signing/permissions as needed. Simulator and physical-device localhost differ; the API client has a local URL. CI installs the backend dependencies and runs its tests; an actual iOS/backend integration remains unverified. See [known blockers](docs/project-overview.md) before testing audio uploads.
 
 ## Demo
 
@@ -60,6 +60,14 @@ The original README linked [this author-provided YouTube recording](https://yout
 
 ## Limits and verification
 
-Python AST syntax parsing passed for all seven backend files on 2026-10-20. No application tests or CI workflow were found. Runtime verification was blocked by absent FastAPI/librosa/PocketSphinx dependencies; the available Python is 3.12 while pinned NumPy 1.24.3 requires a different compatibility review. Xcode is unavailable in this Linux environment. No Swift build, audio inference, accuracy evaluation or full app demonstration was verified.
+The backend suite passes four tests locally and in Python 3.11 CI using the declared requirements: generated WAV decoding, repeat-attempt progress, invalid audio, and multipart/query compatibility. Scoring is controlled in tests. No Swift build, real pronunciation-accuracy evaluation or full app demonstration was verified; Xcode is unavailable in this Linux environment.
 
-The backend has no authentication or durable database. iOS analysis uses a fixed `ios_user` and disables progress recording. Streaks and weekly histories contain placeholders. Uploaded audio handling and the client/server request contract have suspected incompatibilities detailed in the overview. No clinical dataset, train/test split, phoneme accuracy, therapy outcome or privacy-compliance validation is provided. Use synthetic/non-sensitive recordings only. Repository configuration includes a tracked `.env`; do not copy its contents into documentation or deployment settings.
+The backend has no authentication or durable database. iOS analysis uses a fixed `ios_user` and disables progress recording. Streaks and weekly histories contain placeholders. Audio decoding and request-format defects have regression coverage; real model output and complete game integration still need validation. No clinical dataset, train/test split, phoneme accuracy, therapy outcome or privacy-compliance validation is provided. Use synthetic/non-sensitive recordings only. Repository configuration includes a tracked `.env`; do not copy its contents into documentation or deployment settings.
+
+## Audio/progress repair — 2026-10-20
+
+The backend now decodes uploaded containers through a byte stream rather than interpreting encoded bytes as raw PCM. Empty/unsupported audio returns 400; uploads above 10 MiB return 413; empty phoneme results return 422. Upload handles close in a `finally` block. Progress records retain abstract phoneme scores so a second attempt can compare against the first without treating a Pydantic model as a dictionary. This does not securely erase process memory or validate pronunciation accuracy.
+
+Run `PYTHONPATH=backend python -m unittest discover -s backend/tests -v`. Tests use an actual generated WAV and controlled scorer output. The game still uses mock analysis; authentic transcription/scoring, persistent progress and device validation remain outstanding.
+
+The iOS endpoint also accepts multipart `target_word`/`language` fields used by APIService.swift while retaining legacy query parameters. Missing/blank words and non-English requests are rejected. Two ASGI contract tests cover the client payload and legacy query path; these mock the analysis service and are not device or model validation. Install `httpx==0.27.2` with the declared backend requirements to run them.
