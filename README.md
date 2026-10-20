@@ -9,11 +9,11 @@ The interface turns word practice into short monster battles, rewards and progre
 - A separate Python API defines audio-analysis, session, progress and exercise routes.
 - Backend scoring attempts PocketSphinx and can fall back to randomized mock scores; exercises and feedback use predefined rules and content.
 
-**Ownership:** collaborative work by Albert Mejooli and frontend contributors visible in history. Albert's commits cover [backend implementation](https://github.com/Albert-bit07/Speech-therapy-app/commits/main/backend); frontend/game and demo contributions are shared. This does not establish sole authorship of the entire app.
+**Ownership:** collaborative work by Albert Mejooli and frontend contributors visible in history. Albert's commits cover [backend implementation](https://github.com/Albert-bit07/Speech-therapy-app/commits/main/backend); frontend/game and demo contributions are shared.
 
 **Stack:** SwiftUI/AVFoundation · FastAPI/Pydantic · librosa/NumPy · PocketSphinx · in-memory Python state · local iOS preferences.
 
-[Setup and demo](docs/demo.md) · [Engineering details and blockers](docs/project-overview.md) · [Recruiting notes](docs/recruiting.md)
+[Setup and demo](docs/demo.md) · [Engineering details and blockers](docs/project-overview.md)
 
 ## Architecture and current integration boundary
 
