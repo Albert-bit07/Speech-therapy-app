@@ -2,6 +2,8 @@
 Enhanced speech analysis service
 Articulation therapy focused with Responsible AI
 """
+import io
+from fastapi import HTTPException
 import librosa
 import numpy as np
 from datetime import datetime
@@ -62,7 +64,7 @@ def calculate_progress(current_scores: list, previous_scores: list) -> dict:
     # Get average confidence for each phoneme from previous attempts
     phoneme_history = {}
     for prev in previous_scores:
-        for p in prev.get("phoneme_scores", []):
+        for p in prev.phoneme_scores:
             phoneme = p["phoneme"]
             if phoneme not in phoneme_history:
                 phoneme_history[phoneme] = []
@@ -117,14 +119,20 @@ async def analyze_speech(
     
     try:
         # Step 1: Load audio safely (NO saving to disk)
-        audio_bytes = await audio_file.read()
-        y, sr = librosa.load(
-            librosa.util.buf_to_float(audio_bytes),
-            sr=16000
-        )
+        audio_bytes = await audio_file.read(10 * 1024 * 1024 + 1)
+        if len(audio_bytes) > 10 * 1024 * 1024:
+            raise HTTPException(status_code=413, detail="Audio exceeds 10 MiB")
+        try:
+            y, sr = librosa.load(io.BytesIO(audio_bytes), sr=16000)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail="Invalid or unsupported audio") from exc
+        if not len(y) or not np.isfinite(y).all():
+            raise HTTPException(status_code=400, detail="Audio must contain finite samples")
         
         # Step 2: Score pronunciation (phoneme-level)
         phoneme_scores = score_pronunciation(y, sr, target_word)
+        if not phoneme_scores:
+            raise HTTPException(status_code=422, detail="No phonemes available for this word")
         
         # Step 3: Calculate progress if enabled
         progress_data = None
@@ -142,6 +150,7 @@ async def analyze_speech(
             progress_data = ProgressData(
                 session_date=datetime.now(),
                 word_practiced=target_word,
+                phoneme_scores=[dict(p) for p in phoneme_scores],
                 overall_score=int(np.mean([p["confidence"] for p in phoneme_scores]) * 100),
                 phonemes_improved=progress_info["improved_phonemes"],
                 phonemes_need_practice=progress_info["needs_more_practice"],
@@ -177,7 +186,7 @@ async def analyze_speech(
         # Step 10: CRITICAL - Delete audio from memory
         del audio_bytes
         del y
-        log_privacy_compliance(f"Session {session_id} - Audio processed and deleted")
+        log_privacy_compliance(f"Session {session_id} - Analysis completed")
         
         # Step 11: Return child-friendly response
         return {
@@ -194,8 +203,10 @@ async def analyze_speech(
     
     except Exception as e:
         # Even on error, ensure no audio is retained
-        log_privacy_compliance(f"Session {session_id} - Error occurred, audio deleted")
-        raise e
+        log_privacy_compliance(f"Session {session_id} - Analysis failed")
+        raise
+    finally:
+        await audio_file.close()
 
 def get_user_progress_summary(user_id: str) -> dict:
     """

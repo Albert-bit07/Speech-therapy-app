@@ -164,6 +164,7 @@ class ProgressData(BaseModel):
     session_date: datetime = Field(default_factory=datetime.now)
     word_practiced: str
     overall_score: int
+    phoneme_scores: List[dict] = Field(default_factory=list)
     phonemes_improved: List[str] = Field(default_factory=list)
     phonemes_need_practice: List[str] = Field(default_factory=list)
     session_duration_seconds: Optional[int] = None

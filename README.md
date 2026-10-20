@@ -63,3 +63,9 @@ The original README linked [this author-provided YouTube recording](https://yout
 Python AST syntax parsing passed for all seven backend files on 2026-10-20. No application tests or CI workflow were found. Runtime verification was blocked by absent FastAPI/librosa/PocketSphinx dependencies; the available Python is 3.12 while pinned NumPy 1.24.3 requires a different compatibility review. Xcode is unavailable in this Linux environment. No Swift build, audio inference, accuracy evaluation or full app demonstration was verified.
 
 The backend has no authentication or durable database. iOS analysis uses a fixed `ios_user` and disables progress recording. Streaks and weekly histories contain placeholders. Uploaded audio handling and the client/server request contract have suspected incompatibilities detailed in the overview. No clinical dataset, train/test split, phoneme accuracy, therapy outcome or privacy-compliance validation is provided. Use synthetic/non-sensitive recordings only. Repository configuration includes a tracked `.env`; do not copy its contents into documentation or deployment settings.
+
+## Audio/progress repair — 2026-10-20
+
+The backend now decodes uploaded containers through a byte stream rather than interpreting encoded bytes as raw PCM. Empty/unsupported audio returns 400; uploads above 10 MiB return 413; empty phoneme results return 422. Upload handles close in a `finally` block. Progress records retain abstract phoneme scores so a second attempt can compare against the first without treating a Pydantic model as a dictionary. This does not securely erase process memory or validate pronunciation accuracy.
+
+Run `PYTHONPATH=backend python -m unittest discover -s backend/tests -v`. Tests use an actual generated WAV and controlled scorer output. The game still uses mock analysis; iOS form/query alignment, authentic transcription/scoring, persistent progress and device validation remain outstanding.
