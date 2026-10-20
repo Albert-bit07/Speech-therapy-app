@@ -1,3 +1,5 @@
+> Historical review: this page records the pre-repair baseline. Current decoder, request-contract fixes and validation are documented in the [README](../README.md).
+
 # Engineering overview
 
 ## Pipeline and design decisions

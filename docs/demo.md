@@ -1,3 +1,5 @@
+> Historical review: this page records the pre-repair baseline. Current decoder, request-contract fixes and validation are documented in the [README](../README.md).
+
 # 90-second demonstration plan
 
 The [original author-provided recording](https://youtu.be/bkb0GQkSVr0) is linked for continuity, not verified here. A new recording has not been produced.
