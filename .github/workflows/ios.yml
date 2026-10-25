@@ -1,0 +1,30 @@
+name: iOS simulator build
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        configuration: [Debug, Release]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Record Xcode version
+        run: xcodebuild -version
+      - name: Build simulator app without signing
+        run: >-
+          xcodebuild
+          -project frontend/ChatterQuest/ChatterQuest/ChatterQuest.xcodeproj
+          -target ChatterQuest
+          -configuration '${{ matrix.configuration }}'
+          -sdk iphonesimulator
+          CODE_SIGNING_ALLOWED=NO
+          build
+      - name: Run API client regression scenarios
+        if: matrix.configuration == 'Debug'
+        run: |
+          swiftc frontend/ChatterQuest/ChatterQuest/ChatterQuest/APIService.swift frontend/tests/APIServiceTests.swift -o /tmp/api-client-tests
+          /tmp/api-client-tests
