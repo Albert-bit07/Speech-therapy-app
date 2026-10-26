@@ -1,5 +1,8 @@
 import json
 import os
+import random
+import struct
+from types import SimpleNamespace
 from pathlib import Path
 import subprocess
 import sys
@@ -84,3 +87,42 @@ class RecognitionTests(unittest.TestCase):
                     output.writeframes(bytes(100))
                 with self.assertRaises(ValueError):
                     recognition.read_wave(wav)
+
+    def test_invalid_native_phone_spans_are_rejected_without_partial_output(self):
+        class Word(list):
+            name = 'hello'
+        for start, duration, name in [(-1,5,'AH'), (5,5,'AH'), (90,20,'AH'),
+                                      (10,0,'AH'), (10,-1,'AH'), (10,5,''), (10.5,5,'AH')]:
+            decoder = Mock()
+            decoder.hyp.return_value = Mock(hypstr='hello')
+            decoder.get_alignment.return_value = [Word([
+                SimpleNamespace(name='HH',start=0,duration=10),
+                SimpleNamespace(name=name,start=start,duration=duration),
+            ])]
+            with self.subTest(start=start,duration=duration,name=name):
+                with patch.object(recognition,'Decoder',return_value=decoder):
+                    with self.assertRaises(recognition.RecognitionUnavailable):
+                        recognition.recognize_pcm(b'\x01\x00' * 16000)
+
+    def test_synthetic_non_speech_through_native_cli(self):
+        rng = random.Random(20261026)
+        cases = {
+            'low_noise': [rng.randint(-100,100) for _ in range(16000)],
+            'loud_noise': [rng.randint(-30000,30000) for _ in range(16000)],
+            'constant': [1000] * 16000,
+            'impulse': [30000] + [0] * 15999,
+            'one_sample': [1],
+        }
+        # These fixed inputs are robustness fixtures, not a speech/noise classifier.
+        with tempfile.TemporaryDirectory() as temporary:
+            for name, samples in cases.items():
+                with self.subTest(case=name):
+                    wav = Path(temporary) / (name + '.wav')
+                    with wave.open(str(wav),'wb') as output:
+                        output.setparams((1,2,16000,0,'NONE','not compressed'))
+                        output.writeframes(struct.pack('<' + 'h' * len(samples),*samples))
+                    completed = subprocess.run([sys.executable,'-m','services.recognition',str(wav)],
+                        env={**os.environ,'PYTHONPATH':str(Path(__file__).resolve().parents[1])},
+                        capture_output=True,text=True,timeout=30)
+                    self.assertEqual(completed.returncode,0,completed.stderr)
+                    self.assertEqual(json.loads(completed.stdout),{'transcript':'','words':[]})

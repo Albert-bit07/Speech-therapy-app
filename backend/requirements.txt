@@ -5,4 +5,4 @@ python-multipart==0.0.31
 librosa==0.11.0
 soundfile==0.12.1
 numpy==1.24.3
-pocketsphinx==5.1.1  # FREE pronunciation scoring
+pocketsphinx==5.1.1  # Offline recognition and experimental alignment; no validated scoring
