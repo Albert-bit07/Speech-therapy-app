@@ -8,6 +8,25 @@ from services import pronunciation_scoring as scoring
 from services.speech_analysis import analyze_speech, user_progress_db
 
 class ScoringAvailabilityTests(unittest.IsolatedAsyncioTestCase):
+    async def test_word_segments_never_create_progress(self):
+        user_progress_db.clear()
+        with patch.object(scoring, 'POCKETSPHINX_AVAILABLE', False):
+            scorer = scoring.FreePronunciationScorer()
+        scorer.decoder = Mock()
+        scorer.decoder.hyp.return_value = Mock(hypstr='rain')
+        scorer.decoder.seg.return_value = [Mock(word='rain', prob=0.9)]
+        buffer = io.BytesIO()
+        sf.write(buffer, np.ones(1600) * 0.1, 16000, format='WAV')
+        buffer.seek(0)
+        upload = UploadFile(file=buffer, filename='sample.wav')
+        with patch.object(scoring, 'POCKETSPHINX_AVAILABLE', True), \
+             patch.object(scoring, 'get_scorer', return_value=scorer):
+            with self.assertRaises(HTTPException) as failure:
+                await analyze_speech(upload, 'rain', user_id='word-segments')
+        self.assertEqual(failure.exception.status_code, 503)
+        self.assertEqual(user_progress_db, {})
+        self.assertTrue(buffer.closed)
+
     async def test_missing_recognizer_never_fabricates_scores_or_progress(self):
         user_progress_db.clear()
         buffer=io.BytesIO()
@@ -34,6 +53,17 @@ class ScoringAvailabilityTests(unittest.IsolatedAsyncioTestCase):
 
 
 class DecoderAudioTests(unittest.TestCase):
+    def test_word_search_output_is_not_phoneme_evidence(self):
+        for words in ([], ['rain'], ['R'], ['R', 'EY1', 'N']):
+            with self.subTest(words=words):
+                scorer = self.make_scorer()
+                scorer.decoder.hyp.return_value = Mock(hypstr='rain')
+                scorer.decoder.seg.return_value = [
+                    Mock(word=word, prob=0.9) for word in words]
+                with self.assertRaises(scoring.ScoringUnavailable):
+                    scorer.score_with_pocketsphinx(np.ones(1600) * .1, 16000, 'rain')
+                scorer.decoder.end_utt.assert_called_once()
+
     def make_scorer(self):
         with patch.object(scoring, 'POCKETSPHINX_AVAILABLE', False):
             scorer = scoring.FreePronunciationScorer()

@@ -214,44 +214,13 @@ class FreePronunciationScorer:
                 logger.warning("No speech detected by PocketSphinx")
                 return None
             
-            # Get phoneme-level alignment
-            phoneme_scores = []
-            expected_phonemes = WORD_PHONEMES.get(target_word.lower(), [])
-            
-            # Get segments (phoneme-level info)
-            segments = [seg for seg in self.decoder.seg()]
-            
-            # Match detected phonemes with expected
-            for i, expected_ph in enumerate(expected_phonemes):
-                if i < len(segments):
-                    segment = segments[i]
-                    detected_ph = segment.word
-                    acoustic_score = segment.prob
-                    
-                    confidence = self.calculate_phoneme_confidence(
-                        expected_ph,
-                        detected_ph,
-                        acoustic_score
-                    )
-                else:
-                    # Phoneme missing
-                    detected_ph = expected_ph
-                    confidence = 0.55
-                
-                # Convert to simple representation
-                simple_phoneme = CMU_TO_SIMPLE.get(expected_ph, expected_ph.lower())
-                
-                phoneme_scores.append({
-                    "phoneme": simple_phoneme,
-                    "expected": simple_phoneme,
-                    "confidence": confidence,
-                    "detected": detected_ph,
-                    "is_pocketsphinx": True
-                })
-            
-            logger.info(f"PocketSphinx scored {len(phoneme_scores)} phonemes")
-            return phoneme_scores
-            
+            # This decoder runs word search. Even labels that resemble ARPAbet
+            # are not evidence of phoneme alignment. Never fill missing phones
+            # from the target or turn word posteriors into assessment scores.
+            raise ScoringUnavailable("Phoneme assessment is not implemented")
+
+        except ScoringUnavailable:
+            raise
         except Exception as e:
             logger.exception("PocketSphinx scoring failed")
             raise ScoringUnavailable("Pronunciation decoder failed") from e
