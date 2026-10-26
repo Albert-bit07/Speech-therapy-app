@@ -88,3 +88,17 @@ This does **not** validate the PocketSphinx scoring algorithm: decoder segmentat
 The decoder boundary validates finite mono 16 kHz samples, converts them to saturated signed 16-bit PCM without a WAV header, and serializes utterances on the shared decoder. Opened utterances are closed after processing errors; native decoder failures surface as unavailable service errors. Four regression tests cover exact sample bytes, invalid inputs, failure cleanup and concurrent calls with a controlled decoder. These tests do not validate phoneme recognition: `Decoder.seg()` returns word segments, and that output is now rejected with HTTP 503 without saving progress. Empty, truncated or phoneme-looking word segments cannot trigger synthesized phonemes or scores. A validated phoneme-assessment implementation is still required before recognition can produce assessments. See the [PocketSphinx API contract](https://pocketsphinx.readthedocs.io/en/stable/pocketsphinx.html).
 
 The iOS client targets `http://localhost:8000/api` by default (Mac backend with simulator). Change `APIConfig.baseURL` for a physical-device development environment; no hosted backend is provided. Missing exercises offer retry/close controls. Recordings use the temporary directory and are removed after analysis or leaving the view; this is resource cleanup, not a secure-erasure guarantee. The UI does not claim validated speech assessment. There is no separate demo-mode implementation.
+
+## Experimental recognition diagnostic
+
+A separate offline tool now loads the bundled English acoustic model, dictionary and language model from their actual installed paths, recognizes a transcript, and runs a second native pass for phone alignment:
+
+```bash
+PYTHONPATH=backend python -m services.recognition recording.wav
+```
+
+Input must be uncompressed mono signed 16-bit WAV at 16 kHz, no longer than 30 seconds. Output is JSON containing the recognized transcript and word/phone timing intervals. There is no expected-word argument, assessment score or progress write. The tool creates a fresh decoder per invocation to isolate native search state; it is a diagnostic, not a throughput-optimized serving endpoint. It does not upload audio or change the iOS/API scoring behavior.
+
+Phone labels are dictionary pronunciations aligned to the **recognized transcript**, not independent evidence that those sounds were articulated correctly. Digital silence returns an empty result before decoding. Quiet speech and background noise are not reliably distinguished; noise can still produce a false transcript. No confidence calibration or clinical utility is claimed.
+
+The suite runs the real decoder and CLI against the upstream “go forward ten meters” recording, and tests input limits, silence and cleanup on decoding/alignment failures. Fixture provenance and redistribution terms are in [backend/tests/fixtures](backend/tests/fixtures/README.md). One upstream fixture is not a held-out accuracy evaluation. The pronunciation assessment API remains explicitly unavailable until a defensible assessment method and evaluation are implemented.
