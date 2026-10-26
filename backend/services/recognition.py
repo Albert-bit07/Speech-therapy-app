@@ -60,13 +60,23 @@ def recognize_pcm(pcm: bytes, sample_rate: int = SAMPLE_RATE) -> dict:
         if alignment is None:
             raise RecognitionUnavailable('No sub-word alignment available')
         words = []
+        previous_end = 0
+        audio_seconds = len(pcm) / (2 * SAMPLE_RATE)
         for word in alignment:
             if word.name in {'<s>', '</s>', '<sil>'}:
                 continue
-            phones = [{'phone': phone.name,
-                       'start_seconds': phone.start / FRAME_RATE,
-                       'end_seconds': (phone.start + phone.duration) / FRAME_RATE}
-                      for phone in word if phone.duration > 0]
+            phones = []
+            for phone in word:
+                start, duration = phone.start, phone.duration
+                if (not isinstance(start, int) or not isinstance(duration, int)
+                        or start < previous_end or duration <= 0
+                        or (start + duration) / FRAME_RATE > audio_seconds
+                        or not isinstance(phone.name, str) or not phone.name.strip()):
+                    raise RecognitionUnavailable('Invalid phone alignment bounds or label')
+                previous_end = start + duration
+                phones.append({'phone': phone.name,
+                               'start_seconds': start / FRAME_RATE,
+                               'end_seconds': previous_end / FRAME_RATE})
             if not phones:
                 raise RecognitionUnavailable('Incomplete phone alignment')
             words.append({'word': word.name, 'phones': phones})

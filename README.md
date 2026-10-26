@@ -102,3 +102,18 @@ Input must be uncompressed mono signed 16-bit WAV at 16 kHz, no longer than 30 s
 Phone labels are dictionary pronunciations aligned to the **recognized transcript**, not independent evidence that those sounds were articulated correctly. Digital silence returns an empty result before decoding. Quiet speech and background noise are not reliably distinguished; noise can still produce a false transcript. No confidence calibration or clinical utility is claimed.
 
 The suite runs the real decoder and CLI against the upstream “go forward ten meters” recording, and tests input limits, silence and cleanup on decoding/alignment failures. Fixture provenance and redistribution terms are in [backend/tests/fixtures](backend/tests/fixtures/README.md). One upstream fixture is not a held-out accuracy evaluation. The pronunciation assessment API remains explicitly unavailable until a defensible assessment method and evaluation are implemented.
+
+The diagnostic rejects native phone alignments with negative, overlapping,
+non-integer or out-of-recording frame spans, nonpositive durations, or empty
+phone labels. It returns no partial alignment when validation fails. This is
+output-integrity validation, not evidence that a valid alignment is acoustically
+correct.
+
+The regression suite also runs the real native CLI in isolated subprocesses on
+five fixed synthetic non-speech inputs: low/loud seeded noise, a constant signal,
+an impulse and one sample. With the pinned model they produce empty transcripts.
+These fixtures check those specific behaviors and native crash boundaries; they
+are **not** held-out speech evaluation, a general noise-rejection guarantee,
+child-speech validation or pronunciation assessment. Real recordings, independent
+transcripts and a separate evaluation protocol are still needed for accuracy
+claims. The existing upstream spoken fixture is also not a held-out corpus.
