@@ -18,7 +18,7 @@ from models.schemas import (
 )
 from services.speech_analysis import analyze_speech, get_user_progress_summary
 from services.exercise_generator import get_home_practice_tips, generate_exercises
-from typing import Optional, List
+from typing import Optional, List, Literal
 from datetime import datetime, timedelta, timezone
 import uuid
 
@@ -178,14 +178,15 @@ async def save_session_ios(session: IOSPracticeSession):
 @app.get("/api/exercises/adaptive", response_model=List[IOSExercise])
 async def get_adaptive_exercises_ios(
     user_id: str = Query(...),
-    count: int = Query(default=5),
-    difficulty: str = Query(default="medium")
+    count: int = Query(default=5, ge=1, le=5),
+    difficulty: Literal["easy", "medium", "hard"] = Query(default="medium")
 ):
     """
     iOS-compatible adaptive exercises endpoint
     
     Returns exercises tailored to user's needs
     """
+    difficulty_level = {"easy": 1, "medium": 2, "hard": 3}[difficulty]
     # Get user's difficulty areas
     summary = get_user_progress_summary(user_id)
     difficult_sounds = summary.get("still_practicing", [])
@@ -209,7 +210,7 @@ async def get_adaptive_exercises_ios(
                 id=str(uuid.uuid4()),
                 word=word.upper(),
                 phonetic=f"{word[0]} • {word[1:]}",
-                difficulty=2 if difficulty == "medium" else 3,
+                difficulty=difficulty_level,
                 target_phonemes=[sound],
                 category="practice",
                 audio_url=None,
@@ -217,14 +218,14 @@ async def get_adaptive_exercises_ios(
                 fun_fact=f"Practice the '{sound}' sound!"
             ))
     
-    # Fill remaining with random words
+    # Fill remaining slots from the fixed fallback catalog
     default_words = ["BUTTERFLY", "JUMPING", "HAPPY", "SUNSHINE", "GARDEN"]
     for word in default_words[:count - len(exercises)]:
         exercises.append(IOSExercise(
             id=str(uuid.uuid4()),
             word=word,
             phonetic=" • ".join([word[i:i+2] for i in range(0, len(word), 2)]),
-            difficulty=1 if difficulty == "easy" else 2,
+            difficulty=difficulty_level,
             target_phonemes=["mixed"],
             category="general",
             audio_url=None,

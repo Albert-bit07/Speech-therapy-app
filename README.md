@@ -117,3 +117,5 @@ are **not** held-out speech evaluation, a general noise-rejection guarantee,
 child-speech validation or pronunciation assessment. Real recordings, independent
 transcripts and a separate evaluation protocol are still needed for accuracy
 claims. The existing upstream spoken fixture is also not a held-out corpus.
+
+The experimental `/api/exercises/adaptive` endpoint accepts `count` from 1 to 5 and `difficulty` of `easy`, `medium`, or `hard` (default: 5 and medium). Invalid values return 422. Both targeted and fallback exercises use the requested numeric difficulty label (1/2/3). These labels and the small fixed word catalog are not clinically validated difficulty or personalization.
