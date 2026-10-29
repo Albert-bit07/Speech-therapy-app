@@ -41,12 +41,12 @@ Source-derived diagram. [GameView.swift](frontend/ChatterQuest/ChatterQuest/Chat
 
 ## Setup
 
-Use macOS/Xcode for iOS; the backend requirements are pinned to older packages and need a compatible Python environment (Python 3.11 is exercised by CI). From the repository root:
+Use macOS/Xcode for iOS; the backend locks are verified on Linux with Python 3.11 (other platforms remain unverified). From the repository root:
 
 ```bash
 python3.11 -m venv .venv
 # Activate the environment using your shell's activation command.
-python -m pip install -r backend/requirements.txt
+python -m pip install --require-hashes -r backend/requirements.lock
 cd backend
 python -m uvicorn main:app --host 127.0.0.1 --port 8000
 ```
@@ -59,7 +59,7 @@ The original README linked [this author-provided YouTube recording](https://yout
 
 ## Limits and verification
 
-The backend suite has fifteen tests, with Python 3.11 CI using the declared requirements: generated WAV decoding, repeat-attempt progress, invalid audio, and multipart/query compatibility. Scoring is controlled in tests. A hosted macOS workflow builds the actual iOS simulator target in Debug and Release; its first baseline exposed missing MockAPIService references, now replaced with the existing API client. Seven controlled URLSession regression scenarios cover successful JSON, malformed JSON, empty exercises, HTTP errors and transport failures. Real pronunciation accuracy, microphone/device behavior and a full app demonstration remain unverified.
+The backend suite has 28 tests, with Python 3.11 CI enforcing the development lock and checking dependency consistency: generated WAV decoding, repeat-attempt progress, invalid audio, and multipart/query compatibility. Scoring is controlled in tests. A hosted macOS workflow builds the actual iOS simulator target in Debug and Release; its first baseline exposed missing MockAPIService references, now replaced with the existing API client. Seven controlled URLSession regression scenarios cover successful JSON, malformed JSON, empty exercises, HTTP errors and transport failures. Real pronunciation accuracy, microphone/device behavior and a full app demonstration remain unverified.
 
 The backend has no authentication or durable database. iOS analysis uses a fixed `ios_user` and disables progress recording. iOS progress now derives counts, rewards, streaks and weekly activity from accepted session records; empty history stays empty. Audio decoding and request-format defects have regression coverage; real model output and complete game integration still need validation. No clinical dataset, train/test split, phoneme accuracy, therapy outcome or privacy-compliance validation is provided. Use synthetic/non-sensitive recordings only. Repository configuration includes a tracked `.env`; do not copy its contents into documentation or deployment settings.
 
@@ -69,7 +69,7 @@ The backend now decodes uploaded containers through a byte stream rather than in
 
 Run `PYTHONPATH=backend python -m unittest discover -s backend/tests -v`. Tests use an actual generated WAV and controlled scorer output. The game uses the API client; authentic phoneme scoring, persistent progress and device validation remain outstanding.
 
-The iOS endpoint also accepts multipart `target_word`/`language` fields used by APIService.swift while retaining legacy query parameters. Missing/blank words and non-English requests are rejected. Two ASGI contract tests cover the client payload and legacy query path; these mock the analysis service and are not device or model validation. Install `httpx==0.27.2` with the declared backend requirements to run them.
+The iOS endpoint also accepts multipart `target_word`/`language` fields used by APIService.swift while retaining legacy query parameters. Missing/blank words and non-English requests are rejected. Two ASGI contract tests cover the client payload and legacy query path; these mock the analysis service and are not device or model validation. Install `backend/requirements-dev.lock` with `--require-hashes` to run the tests.
 
 ## Observed session progress
 
@@ -119,3 +119,28 @@ transcripts and a separate evaluation protocol are still needed for accuracy
 claims. The existing upstream spoken fixture is also not a held-out corpus.
 
 The experimental `/api/exercises/adaptive` endpoint accepts `count` from 1 to 5 and `difficulty` of `easy`, `medium`, or `hard` (default: 5 and medium). Invalid values return 422. Both targeted and fallback exercises use the requested numeric difficulty label (1/2/3). These labels and the small fixed word catalog are not clinically validated difficulty or personalization.
+
+### Reproducible backend dependencies
+
+`backend/requirements.txt` and `backend/requirements-dev.txt` are the direct
+production and test inputs. Their generated locks pin transitive versions and
+SHA256 distribution hashes. Use the production lock for serving; use the
+development lock for tests:
+
+```bash
+python -m pip install --require-hashes -r backend/requirements-dev.lock
+python -m pip check
+PYTHONPATH=backend python -m unittest discover -s backend/tests -v
+```
+
+Regenerate both locks with uv 0.13.4 on Linux/Python 3.11, reviewing upgrades and
+validating in a fresh environment:
+
+```bash
+uv pip compile backend/requirements-dev.txt --python-version 3.11 --generate-hashes --upgrade --output-file backend/requirements-dev.lock
+uv pip compile backend/requirements.txt --python-version 3.11 --constraint backend/requirements-dev.lock --generate-hashes --output-file backend/requirements.lock
+```
+
+The production resolution is constrained to the tested development versions.
+Hashes verify artifact identity, not model accuracy or vulnerability freedom.
+CI separately scans installed application dependencies with pip-audit.

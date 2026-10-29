@@ -11,7 +11,8 @@ jobs:
         with:
           python-version: '3.11'
       - run: python -m venv --without-pip .venv
-      - run: python -m pip --python .venv/bin/python install -r backend/requirements.txt httpx==0.27.2
+      - run: python -m pip --python .venv/bin/python install --require-hashes -r backend/requirements-dev.lock
+      - run: python -m pip --python .venv/bin/python check
       - run: PYTHONPATH=backend .venv/bin/python -m unittest discover -s backend/tests -v
       - name: Audit installed application dependencies
         run: |
