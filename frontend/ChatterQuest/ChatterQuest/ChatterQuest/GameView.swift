@@ -26,6 +26,7 @@ struct GameView: View {
     @State private var recordingPulse = false
     @State private var isProcessing = false
     @State private var audioRecorder: AVAudioRecorder?
+    @State private var speechSynthesizer = AVSpeechSynthesizer()
     @State private var recordedAudioURL: URL?
     @State private var pronunciationResult: PronunciationResult?
     
@@ -63,6 +64,7 @@ struct GameView: View {
         }
         .onDisappear {
             processingTask?.cancel()
+            speechSynthesizer.stopSpeaking(at: .immediate)
             audioRecorder?.stop()
             discardRecording()
         }
@@ -213,6 +215,7 @@ struct GameView: View {
                 )
             }
             .scaleEffect(scale)
+            .disabled(isRecording || isProcessing)
             .padding(.bottom, 20)
             
             // Attack button (microphone)
@@ -300,6 +303,7 @@ struct GameView: View {
     }
     
     func setupRecording() {
+        speechSynthesizer.stopSpeaking(at: .immediate)
         let audioSession = AVAudioSession.sharedInstance()
         
         do {
@@ -457,6 +461,7 @@ struct GameView: View {
     }
 
     func moveToNextExercise() {
+        speechSynthesizer.stopSpeaking(at: .immediate)
         showResults = false
         attemptNumber = 1
         sessionStartTime = Date()
@@ -472,6 +477,19 @@ struct GameView: View {
     }
     
     func playWord() {
+        guard let exercise = currentExercise, !isRecording, !isProcessing else { return }
+        speechSynthesizer.stopSpeaking(at: .immediate)
+        do {
+            try AVAudioSession.sharedInstance().setCategory(.playback, mode: .spokenAudio)
+            try AVAudioSession.sharedInstance().setActive(true)
+        } catch {
+            reportError("Word audio is unavailable. Please try again.")
+            return
+        }
+        let utterance = AVSpeechUtterance(string: exercise.word)
+        utterance.voice = AVSpeechSynthesisVoice(language: "en-US")
+        utterance.rate = AVSpeechUtteranceDefaultSpeechRate * 0.8
+        speechSynthesizer.speak(utterance)
         withAnimation(.spring(response: 0.3, dampingFraction: 0.5)) {
             scale = 1.2
         }
@@ -481,7 +499,6 @@ struct GameView: View {
             }
         }
         
-        // TODO: Add actual TTS
     }
 }
 
