@@ -61,7 +61,7 @@ The original README linked [this author-provided YouTube recording](https://yout
 
 The backend suite has 28 tests, with Python 3.11 CI enforcing the development lock and checking dependency consistency: generated WAV decoding, repeat-attempt progress, invalid audio, and multipart/query compatibility. Scoring is controlled in tests. A hosted macOS workflow builds the actual iOS simulator target in Debug and Release; its first baseline exposed missing MockAPIService references, now replaced with the existing API client. Seven controlled URLSession regression scenarios cover successful JSON, malformed JSON, empty exercises, HTTP errors and transport failures. Real pronunciation accuracy, microphone/device behavior and a full app demonstration remain unverified.
 
-The backend has no authentication. iOS sessions persist in SQLite; legacy web analysis progress remains in memory. iOS analysis uses a fixed `ios_user` and disables progress recording. iOS progress now derives counts, rewards, streaks and weekly activity from accepted session records; empty history stays empty. Audio decoding and request-format defects have regression coverage; real model output and complete game integration still need validation. No clinical dataset, train/test split, phoneme accuracy, therapy outcome or privacy-compliance validation is provided. Use synthetic/non-sensitive recordings only. Repository configuration includes a tracked `.env`; do not copy its contents into documentation or deployment settings.
+The backend has no authentication. iOS sessions persist in SQLite; legacy web analysis progress remains in memory. The analysis endpoint uses a fixed internal `ios_user` with progress recording disabled; the game saves completed attempts separately under its installation ID. iOS progress now derives counts, rewards, streaks and weekly activity from accepted session records; empty history stays empty. Audio decoding and request-format defects have regression coverage; real model output and complete game integration still need validation. No clinical dataset, train/test split, phoneme accuracy, therapy outcome or privacy-compliance validation is provided. Use synthetic/non-sensitive recordings only. Repository configuration includes a tracked `.env`; do not copy its contents into documentation or deployment settings.
 
 ## Audio/progress repair — 2026-10-20
 
@@ -167,3 +167,23 @@ sessions cannot be recovered after a restart. The legacy `/progress` endpoint an
 adaptive sound history remain separate, in-memory features. This is a local demo
 store with no authentication, retention policy or production data-management UI.
 Scores are client-reported, not validated clinical measurements.
+
+### Game session sync
+
+The game writes each successfully analyzed attempt to an atomic local outbox before
+applying battle effects. That record keeps its session ID, timestamp and payload
+until `/api/sessions` acknowledges the same ID. Returning to the game or tapping
+**Retry sync** resends pending work. A lost response can cause a repeat request,
+which the backend deduplicates; syncing does not replay battles or local rewards.
+The game displays the server's saved-attempt count and UTC streak. A failed refresh
+clears those displayed values instead of presenting stale progress as current.
+
+An installation gets a persistent random demo user ID in Application Support.
+This separates ordinary installations but is not authentication, account recovery
+or multi-device identity. Deleting app data changes that ID. The outbox holds at
+most 100 attempts and refuses new attempts if it cannot persist them. It stores
+word, timing, IDs and abstract score, with empty transcript/phoneme fields and no
+audio. A corrupt file fails visibly instead of silently discarding pending work.
+Local battle rewards remain a separate game mechanic from server progress totals.
+Permanent server rejection requires investigation; retries do not discard a record.
+There is no background delivery guarantee or full clinical scoring validation.

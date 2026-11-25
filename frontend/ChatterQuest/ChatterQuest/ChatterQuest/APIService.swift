@@ -471,3 +471,89 @@ extension APIService {
         }
     }
 }
+/// Keeps accepted attempts until the server acknowledges their stable IDs.
+/// One actor owns one file; it is not a cross-process or shared-device account store.
+actor PracticeOutbox {
+    static let shared = PracticeOutbox(fileURL: FileManager.default.urls(
+        for: .applicationSupportDirectory, in: .userDomainMask
+    )[0].appendingPathComponent("ChatterQuest/practice-outbox.json"))
+
+    private struct State: Codable {
+        var userId: String
+        var pending: [PracticeSession]
+    }
+    enum StorageError: LocalizedError {
+        case full, invalidAcknowledgment, invalidAttempt
+        var errorDescription: String? {
+            switch self {
+            case .full: return "Sync your saved attempts before recording more practice."
+            case .invalidAcknowledgment: return "The server did not confirm this attempt. It remains saved for retry."
+            case .invalidAttempt: return "This practice result could not be saved. Please try again."
+            }
+        }
+    }
+    private let fileURL: URL
+    private var state: State?
+    private var sending = false
+
+    init(fileURL: URL) { self.fileURL = fileURL }
+
+    private func loaded() throws -> State {
+        if let state { return state }
+        if FileManager.default.fileExists(atPath: fileURL.path) {
+            let decoded = try JSONDecoder().decode(State.self, from: Data(contentsOf: fileURL))
+            state = decoded
+            return decoded
+        }
+        let initial = State(userId: UUID().uuidString, pending: [])
+        try persist(initial)
+        return initial
+    }
+
+    private func persist(_ next: State) throws {
+        let data = try JSONEncoder().encode(next)
+        try FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try data.write(to: fileURL, options: .atomic)
+        state = next
+    }
+
+    func userId() throws -> String { try loaded().userId }
+    func pendingCount() throws -> Int { try loaded().pending.count }
+
+    @discardableResult
+    func enqueue(word: String, score: Double, timeSpent: TimeInterval, attemptNumber: Int) throws -> PracticeSession {
+        guard score.isFinite, (0...1).contains(score), timeSpent.isFinite, timeSpent >= 0, attemptNumber >= 1 else {
+            throw StorageError.invalidAttempt
+        }
+        var next = try loaded()
+        guard next.pending.count < 100 else { throw StorageError.full }
+        // The server's progress endpoint only needs an abstract score. Do not
+        // retain transcripts, phoneme interpretations or recordings in retries.
+        let summary = PronunciationResult(overallScore: score, transcribedText: "", phonemeAnalysis: [],
+                                          mistakes: [], feedback: "", confidence: 0)
+        let attempt = PracticeSession(userId: next.userId, sessionId: UUID().uuidString, timestamp: Date(),
+                                      word: word, language: "en", pronunciationResult: summary,
+                                      timeSpent: max(0, timeSpent), attemptNumber: attemptNumber)
+        next.pending.append(attempt)
+        try persist(next)
+        return attempt
+    }
+
+    func flush(send: (PracticeSession) async throws -> SessionResponse) async throws {
+        guard !sending else { return }
+        sending = true
+        defer { sending = false }
+        while let attempt = try loaded().pending.first {
+            try Task.checkCancellation()
+            let response = try await send(attempt)
+            guard response.saved && response.sessionId == attempt.sessionId else {
+                throw StorageError.invalidAcknowledgment
+            }
+            // enqueue can run while the network request is suspended. Remove
+            // only the acknowledged ID from the latest state, preserving new work.
+            var next = try loaded()
+            next.pending.removeAll { $0.sessionId == attempt.sessionId }
+            try persist(next)
+        }
+    }
+}
