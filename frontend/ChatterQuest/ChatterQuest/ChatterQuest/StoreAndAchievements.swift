@@ -21,7 +21,6 @@ struct StoreView: View {
     @ObservedObject var rewardsManager: RewardsManager
     
     @State private var selectedCategory: StoreCategory = .themes
-    @State private var purchasedItems: Set<String> = []
     
     let storeItems = StoreItem.sampleItems
     
@@ -85,7 +84,7 @@ struct StoreView: View {
                             ForEach(filteredItems) { item in
                                 StoreItemCard(
                                     item: item,
-                                    isPurchased: purchasedItems.contains(item.id.uuidString),
+                                    isPurchased: rewardsManager.purchasedItems.contains(item.id),
                                     canAfford: rewardsManager.coins >= item.cost
                                 ) {
                                     purchaseItem(item)
@@ -108,7 +107,7 @@ struct StoreView: View {
             }
         }
         .onAppear {
-            loadPurchasedItems()
+            rewardsManager.loadFromUserDefaults()
         }
     }
     
@@ -117,30 +116,11 @@ struct StoreView: View {
     }
     
     func purchaseItem(_ item: StoreItem) {
-        guard rewardsManager.coins >= item.cost else { return }
-        
-        rewardsManager.coins -= item.cost
-        rewardsManager.saveToUserDefaults()
-        
-        purchasedItems.insert(item.id.uuidString)
-        savePurchasedItems()
-        
+        guard rewardsManager.purchase(item) else { return }
+
         // Add haptic feedback
         let generator = UINotificationFeedbackGenerator()
         generator.notificationOccurred(.success)
-    }
-    
-    func loadPurchasedItems() {
-        if let data = UserDefaults.standard.data(forKey: "purchasedItems"),
-           let items = try? JSONDecoder().decode(Set<String>.self, from: data) {
-            purchasedItems = items
-        }
-    }
-    
-    func savePurchasedItems() {
-        if let data = try? JSONEncoder().encode(purchasedItems) {
-            UserDefaults.standard.set(data, forKey: "purchasedItems")
-        }
     }
 }
 

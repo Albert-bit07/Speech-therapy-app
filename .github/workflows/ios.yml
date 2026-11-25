@@ -28,3 +28,8 @@ jobs:
         run: |
           swiftc frontend/ChatterQuest/ChatterQuest/ChatterQuest/APIService.swift frontend/tests/APIServiceTests.swift -o /tmp/api-client-tests
           /tmp/api-client-tests
+      - name: Run local reward persistence regressions
+        if: matrix.configuration == 'Debug'
+        run: |
+          swiftc -target "$(uname -m)-apple-macosx14.0" frontend/ChatterQuest/ChatterQuest/ChatterQuest/Rewardssystem.swift frontend/tests/RewardsTests.swift -o /tmp/rewards-tests
+          /tmp/rewards-tests

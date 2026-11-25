@@ -21,6 +21,7 @@ struct DashboardView: View {
     @State private var showingStore = false
     @State private var showingAchievements = false
     @State private var showLevelUpAnimation = false
+    @State private var rewardsUnavailable = false
     
     var body: some View {
         ZStack {
@@ -202,8 +203,13 @@ struct DashboardView: View {
         .sheet(isPresented: $showingAchievements) {
             AchievementsView(rewardsManager: rewardsManager)
         }
+        .alert("Saved rewards unavailable", isPresented: $rewardsUnavailable) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text("Your saved data has been preserved, but local reward changes cannot be saved until it can be read again.")
+        }
         .onAppear {
-            rewardsManager.loadFromUserDefaults()
+            rewardsUnavailable = !rewardsManager.loadFromUserDefaults()
             
             withAnimation(.spring(response: 0.8, dampingFraction: 0.7)) {
                 isVisible = true

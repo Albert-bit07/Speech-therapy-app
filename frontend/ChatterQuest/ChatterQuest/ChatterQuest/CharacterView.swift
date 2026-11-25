@@ -7,44 +7,6 @@
 
 import SwiftUI
 
-enum GrowthStage: String, Codable {
-    case worm = "worm"
-    case cocoon = "cocoon"
-    case butterfly = "butterfly"
-    
-    var displayName: String {
-        switch self {
-        case .worm: return "Little Worm"
-        case .cocoon: return "Growing Cocoon"
-        case .butterfly: return "Beautiful Butterfly"
-        }
-    }
-    
-    var emoji: String {
-        switch self {
-        case .worm: return "🐛"
-        case .cocoon: return "🥚"
-        case .butterfly: return "🦋"
-        }
-    }
-    
-    var practiceThreshold: Int {
-        switch self {
-        case .worm: return 0
-        case .cocoon: return 5
-        case .butterfly: return 10
-        }
-    }
-    
-    var nextStage: GrowthStage? {
-        switch self {
-        case .worm: return .cocoon
-        case .cocoon: return .butterfly
-        case .butterfly: return nil  // Already at final stage
-        }
-    }
-}
-
 // Character View with animation
 struct CharacterView: View {
     let stage: GrowthStage
