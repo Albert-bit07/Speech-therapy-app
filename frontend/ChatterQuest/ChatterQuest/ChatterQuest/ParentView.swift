@@ -14,156 +14,98 @@ import SwiftUI
 
 import SwiftUI
 
+@MainActor
 struct ParentView: View {
-    @State private var selectedTab = 0
+    @State private var progress: UserProgress?
+    @State private var progressError: String?
+    @State private var loading = false
+    @State private var notes: [TherapyNote] = []
+    @State private var noteStore = TherapyNoteStore()
+    @State private var notesReady = false
+    @State private var noteError: String?
     @State private var showingAddNote = false
-    @State private var notes: [TherapyNote] = TherapyNote.mockNotes
-    @State private var weeklyPractice = 4
-    @State private var improvingSounds = ["/r/", "/s/", "/th/"]
-    
+
     var body: some View {
-        NavigationView {
-            ZStack {
-                // Beautiful gradient background
-                LinearGradient(
-                    colors: [
-                        Color(red: 0.95, green: 0.97, blue: 1.0),
-                        Color(red: 0.90, green: 0.94, blue: 0.98)
-                    ],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-                .ignoresSafeArea()
-                
-                ScrollView(showsIndicators: false) {
-                    VStack(spacing: 24) {
-                        Text("Preview only: statistics, charts and initial notes are examples, not your practice data. Added notes last only while this screen remains loaded. Goals, export and reminders are not available yet.")
-                            .font(.callout)
-                            .foregroundColor(.navy)
-                            .padding()
-                            .background(Color.yellow.opacity(0.15))
-                            .padding(.horizontal)
-                        // Header stats cards
-                        HStack(spacing: 16) {
-                            StatCard(
-                                title: "This Week",
-                                value: "\(weeklyPractice)",
-                                subtitle: "sessions",
-                                icon: "calendar",
-                                color: .softBlue
-                            )
-                            
-                            StatCard(
-                                title: "Improvement",
-                                value: "+23%",
-                                subtitle: "accuracy",
-                                icon: "chart.line.uptrend.xyaxis",
-                                color: .softGreen
-                            )
+        List {
+            Section("Saved practice") {
+                Text("Server-confirmed attempts for this installation. Unsynced attempts are not included. Scores are experimental, not a clinical assessment.")
+                    .font(.caption)
+                if loading { ProgressView("Loading progress…") }
+                if let error = progressError { Text(error).foregroundColor(.red) }
+                if let progress = progress {
+                    if progress.totalSessions == 0 {
+                        Text("No saved practice yet. Complete an attempt in the game and sync it.")
+                    } else {
+                        LabeledContent("Attempts", value: String(progress.totalSessions))
+                        LabeledContent("Average score", value: String(format: "%.0f%%", progress.averageAccuracy * 100))
+                        LabeledContent("UTC-day streak", value: String(progress.currentStreak))
+                        ForEach(progress.weeklyProgress, id: \.date) { day in
+                            LabeledContent(day.date, value: "\(day.sessionsCompleted) attempts")
                         }
-                        .padding(.horizontal)
-                        .padding(.top, 20)
-                        
-                        // Progress chart
-                        WeeklyProgressChart()
-                            .padding(.horizontal)
-                        
-                        // Improving sounds
-                        ImprovingSoundsCard(sounds: improvingSounds)
-                            .padding(.horizontal)
-                        
-                        // Recent sessions timeline
-                        RecentSessionsCard()
-                            .padding(.horizontal)
-                        
-                        // Notes section
-                        VStack(alignment: .leading, spacing: 16) {
-                            HStack {
-                                HStack(spacing: 8) {
-                                    Image(systemName: "note.text")
-                                        .font(.title3)
-                                        .foregroundColor(.softBlue)
-                                    
-                                    Text("Therapy Notes")
-                                        .font(.title2)
-                                        .fontWeight(.bold)
-                                        .foregroundColor(.navy)
-                                }
-                                
-                                Spacer()
-                                
-                                Button(action: {
-                                    showingAddNote = true
-                                }) {
-                                    HStack(spacing: 6) {
-                                        Image(systemName: "plus.circle.fill")
-                                        Text("Add")
-                                    }
-                                    .font(.subheadline)
-                                    .fontWeight(.semibold)
-                                    .foregroundColor(.white)
-                                    .padding(.horizontal, 16)
-                                    .padding(.vertical, 8)
-                                    .background(
-                                        Capsule()
-                                            .fill(Color.softBlue)
-                                    )
-                                }
-                            }
-                            .padding(.horizontal)
-                            
-                            if notes.isEmpty {
-                                EmptyNotesView()
-                            } else {
-                                ForEach(notes) { note in
-                                    NoteCard(note: note, onDelete: {
-                                        deleteNote(note)
-                                    })
-                                }
-                                .padding(.horizontal)
-                            }
-                        }
-                        .padding(.vertical, 8)
-                        
-                        // Action buttons
-                        VStack(spacing: 12) {
-                            ActionButton(
-                                title: "Adjust Goals",
-                                icon: "target",
-                                color: .lavender
-                            )
-                            
-                            ActionButton(
-                                title: "Export Progress Report",
-                                icon: "square.and.arrow.up",
-                                color: .softGreen
-                            )
-                            
-                            ActionButton(
-                                title: "Schedule Reminder",
-                                icon: "bell.badge",
-                                color: .sunshine
-                            )
-                        }
-                        .padding(.horizontal)
-                        .padding(.bottom, 30)
-                        .disabled(true)
                     }
                 }
+                Button("Refresh progress") { Task { await loadProgress() } }
+                    .disabled(loading)
             }
-            .navigationTitle("Parent Preview")
-            .navigationBarTitleDisplayMode(.large)
-            .sheet(isPresented: $showingAddNote) {
-                AddNoteView { newNote in
-                    notes.insert(newNote, at: 0)
+            Section("Local notes") {
+                Text("Notes stay on this device. They are not uploaded or included in server progress. Up to 100 notes; titles up to 200 characters and content up to 10,000 characters.")
+                    .font(.caption)
+                if let error = noteError {
+                    Text(error).foregroundColor(.red)
+                    Button("Reload notes") { loadNotes() }
                 }
+                if notesReady && notes.isEmpty { Text("No notes yet.") }
+                ForEach(notes) { note in
+                    NoteCard(note: note, onDelete: { saveNotes(notes.filter { $0.id != note.id }) })
+                }
+                Button("Add note") { showingAddNote = true }
+                    .disabled(!notesReady || notes.count >= 100)
             }
         }
+        .navigationTitle("Practice progress")
+        .task {
+            loadNotes()
+            await loadProgress()
+        }
+        .sheet(isPresented: $showingAddNote) {
+            AddNoteView { note in saveNotes([note] + notes) }
+        }
     }
-    
-    func deleteNote(_ note: TherapyNote) {
-        withAnimation {
-            notes.removeAll { $0.id == note.id }
+
+    private func loadProgress() async {
+        guard !loading else { return }
+        loading = true
+        progress = nil
+        progressError = nil
+        defer { loading = false }
+        do {
+            let userId = try await PracticeOutbox.shared.userId()
+            let result = try await APIService.shared.getUserProgress(userId: userId)
+            try Task.checkCancellation()
+            progress = result
+        } catch {
+            if !Task.isCancelled { progressError = "Could not load saved progress. Please retry." }
+        }
+    }
+
+    private func loadNotes() {
+        do {
+            notes = try noteStore.load()
+            notesReady = true
+            noteError = nil
+        } catch {
+            notesReady = false
+            noteError = "Saved notes could not be read. The existing file has been preserved."
+        }
+    }
+
+    private func saveNotes(_ updated: [TherapyNote]) {
+        do {
+            try noteStore.save(updated)
+            notes = updated
+            noteError = nil
+        } catch {
+            noteError = "Notes could not be saved. Check the note limits or available storage; your saved notes have not changed."
         }
     }
 }
@@ -614,7 +556,7 @@ struct AddNoteView: View {
                         onSave(note)
                         dismiss()
                     }
-                    .disabled(title.isEmpty || content.isEmpty)
+                    .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || title.count > 200 || content.count > 10_000)
                 }
             }
         }
@@ -637,43 +579,7 @@ struct Session: Identifiable {
     let words: Int
 }
 
-struct TherapyNote: Identifiable {
-    let id = UUID()
-    let title: String
-    let content: String
-    let date: String
-    let category: NoteCategory
-    
-    static var mockNotes: [TherapyNote] {
-        [
-            TherapyNote(
-                title: "Great progress on /r/ sound",
-                content: "Child showed significant improvement with the /r/ sound today. Practiced 'rainbow' and 'rocket' multiple times with 85% accuracy. Continue focusing on initial /r/ positions.",
-                date: "Jan 5, 2026",
-                category: .observation
-            ),
-            TherapyNote(
-                title: "Focus areas for next week",
-                content: "Work on /s/ blends (st, sp, sk). Child struggles slightly with these combinations. Recommend 5-minute daily practice.",
-                date: "Jan 4, 2026",
-                category: .goal
-            ),
-            TherapyNote(
-                title: "Parent feedback",
-                content: "Mom mentioned child is more confident speaking at school. Teachers have noticed improvement in classroom participation.",
-                date: "Jan 3, 2026",
-                category: .milestone
-            )
-        ]
-    }
-}
-
-enum NoteCategory: String, CaseIterable {
-    case observation = "Observation"
-    case goal = "Goal"
-    case milestone = "Milestone"
-    case concern = "Concern"
-    
+extension NoteCategory {
     var color: Color {
         switch self {
         case .observation: return .softBlue
