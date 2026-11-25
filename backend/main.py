@@ -21,6 +21,8 @@ from services.exercise_generator import get_home_practice_tips, generate_exercis
 from typing import Optional, List, Literal
 from datetime import datetime, timedelta, timezone
 import uuid
+import sqlite3
+from services.session_store import get_session_store, SessionConflict
 
 app = FastAPI(
     title="SpeakBright Backend",
@@ -37,9 +39,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# In-memory storage for iOS sessions (use database in production)
-sessions_db = {}
-exercises_db = {}
 
 # MARK: - iOS Compatible Endpoints
 
@@ -106,7 +105,7 @@ async def analyze_pronunciation_ios(
 
 
 @app.get("/api/progress/{user_id}", response_model=IOSUserProgress)
-async def get_progress_ios(user_id: str):
+def get_progress_ios(user_id: str):
     """
     iOS-compatible progress endpoint
     
@@ -119,20 +118,20 @@ async def get_progress_ios(user_id: str):
         total_sessions=len(sessions),
         total_stars=sum(rewards_for(score)['stars'] for score in scores),
         total_coins=sum(rewards_for(score)['coins'] for score in scores),
-        current_streak=calculate_streak(user_id),
-        longest_streak=calculate_longest_streak(user_id),
+        current_streak=calculate_streak(user_id, sessions=sessions),
+        longest_streak=calculate_longest_streak(user_id, sessions=sessions),
         practice_count=len(sessions),
         average_accuracy=sum(scores) / len(scores) if scores else 0,
         improving_sounds=[],
         difficulty_sounds=[],
-        weekly_progress=generate_weekly_progress(user_id)
+        weekly_progress=generate_weekly_progress(user_id, sessions=sessions)
     )
 
     return ios_progress
 
 
 @app.post("/api/sessions", response_model=IOSSessionResponse)
-async def save_session_ios(session: IOSPracticeSession):
+def save_session_ios(session: IOSPracticeSession):
     """
     iOS-compatible session save endpoint
     
@@ -144,27 +143,28 @@ async def save_session_ios(session: IOSPracticeSession):
         raise HTTPException(status_code=422, detail='overall_score must be finite and between 0 and 1')
     if session.time_spent < 0 or not math.isfinite(session.time_spent) or session.attempt_number < 1:
         raise HTTPException(status_code=422, detail='Invalid session duration or attempt number')
-    if not session.user_id.strip() or not session.session_id.strip():
-        raise HTTPException(status_code=422, detail='User and session IDs must not be empty')
+    if any(not value.strip() or len(value) > 128 for value in (session.user_id, session.session_id)):
+        raise HTTPException(status_code=422, detail='User and session IDs must contain 1-128 characters')
     timestamp = session.timestamp.replace(tzinfo=timezone.utc) if session.timestamp.tzinfo is None else session.timestamp.astimezone(timezone.utc)
     if timestamp > datetime.now(timezone.utc) + timedelta(minutes=5):
         raise HTTPException(status_code=422, detail='Session timestamp is in the future')
     session_id = session.session_id
-    key = (session.user_id, session_id)
     record = {
         'user_id': session.user_id, 'timestamp': timestamp, 'word': session.word,
         'result': session.pronunciation_result, 'time_spent': session.time_spent,
         'language': session.language, 'attempt_number': session.attempt_number,
     }
-    previous = sessions_db.get(key)
-    if previous is not None and previous != record:
-        raise HTTPException(status_code=409, detail='Session ID already used for different content')
-    sessions_db[key] = record
+    try:
+        inserted, count = get_session_store().save(session_id, record)
+    except SessionConflict as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail='Invalid or oversized session content') from error
+    except (sqlite3.Error, OSError) as error:
+        raise HTTPException(status_code=503, detail='Session storage unavailable; retry with the same session ID') from error
     rewards = IOSRewardsEarned(**rewards_for(accuracy))
+    achievements = check_achievements(count) if inserted else []
 
-    # Check for new achievements
-    achievements = [] if previous is not None else check_achievements(session.user_id)
-    
     response = IOSSessionResponse(
         session_id=session_id,
         saved=True,
@@ -395,7 +395,10 @@ async def health_check():
 # MARK: - Helper Functions
 
 def user_sessions(user_id: str) -> list:
-    return [session for session in sessions_db.values() if session['user_id'] == user_id]
+    try:
+        return get_session_store().for_user(user_id)
+    except (sqlite3.Error, OSError) as error:
+        raise HTTPException(status_code=503, detail='Session storage unavailable') from error
 
 
 def rewards_for(score: float) -> dict:
@@ -403,13 +406,14 @@ def rewards_for(score: float) -> dict:
             'coins': int(score * 100), 'experience_points': int(score * 50)}
 
 
-def practice_dates(user_id: str) -> set:
-    return {session['timestamp'].date() for session in user_sessions(user_id)}
+def practice_dates(user_id: str, sessions=None) -> set:
+    sessions = user_sessions(user_id) if sessions is None else sessions
+    return {session['timestamp'].date() for session in sessions}
 
 
-def calculate_streak(user_id: str, today=None) -> int:
+def calculate_streak(user_id: str, today=None, sessions=None) -> int:
     today = today or datetime.now(timezone.utc).date()
-    dates = practice_dates(user_id)
+    dates = practice_dates(user_id, sessions)
     cursor = today if today in dates else today - timedelta(days=1)
     streak = 0
     while cursor in dates:
@@ -418,19 +422,19 @@ def calculate_streak(user_id: str, today=None) -> int:
     return streak
 
 
-def calculate_longest_streak(user_id: str) -> int:
+def calculate_longest_streak(user_id: str, sessions=None) -> int:
     longest = current = 0
     previous = None
-    for day in sorted(practice_dates(user_id)):
+    for day in sorted(practice_dates(user_id, sessions)):
         current = current + 1 if previous is not None and day - previous == timedelta(days=1) else 1
         longest = max(longest, current)
         previous = day
     return longest
 
 
-def generate_weekly_progress(user_id: str, today=None) -> List[dict]:
+def generate_weekly_progress(user_id: str, today=None, sessions=None) -> List[dict]:
     today = today or datetime.now(timezone.utc).date()
-    sessions = user_sessions(user_id)
+    sessions = user_sessions(user_id) if sessions is None else sessions
     progress = []
     for offset in range(6, -1, -1):
         day = today - timedelta(days=offset)
@@ -440,9 +444,9 @@ def generate_weekly_progress(user_id: str, today=None) -> List[dict]:
     return progress
 
 
-def check_achievements(user_id: str) -> List[str]:
+def check_achievements(count: int) -> List[str]:
     milestones = {1: 'First Practice!', 10: 'Practice Master!', 50: 'Speech Champion!'}
-    achievement = milestones.get(len(user_sessions(user_id)))
+    achievement = milestones.get(count)
     return [achievement] if achievement else []
 
 
