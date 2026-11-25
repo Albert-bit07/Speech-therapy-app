@@ -23,6 +23,18 @@ jobs:
           -sdk iphonesimulator
           CODE_SIGNING_ALLOWED=NO
           build
+      - uses: actions/setup-python@v5
+        if: matrix.configuration == 'Debug'
+        with:
+          python-version: '3.11'
+      - name: Test actual client and backend restart recovery
+        if: matrix.configuration == 'Debug'
+        timeout-minutes: 8
+        run: |
+          python -m venv --without-pip .http-venv
+          python -m pip --python .http-venv/bin/python install --require-hashes -r backend/requirements-dev.lock
+          swiftc frontend/ChatterQuest/ChatterQuest/ChatterQuest/APIService.swift frontend/tests/SessionHTTPTests.swift -o /tmp/session-http-tests
+          .http-venv/bin/python frontend/tests/session_http.py /tmp/session-http-tests
       - name: Run API client regression scenarios
         if: matrix.configuration == 'Debug'
         run: |
