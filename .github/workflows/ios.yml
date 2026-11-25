@@ -50,6 +50,11 @@ jobs:
         run: |
           swiftc frontend/ChatterQuest/ChatterQuest/ChatterQuest/FloatingGeometry.swift frontend/tests/FloatingGeometryTests.swift -o /tmp/geometry-tests
           /tmp/geometry-tests
+      - name: Run persistent note regressions
+        if: matrix.configuration == 'Debug'
+        run: |
+          swiftc frontend/ChatterQuest/ChatterQuest/ChatterQuest/TherapyNoteStore.swift frontend/tests/TherapyNoteTests.swift -o /tmp/note-tests
+          /tmp/note-tests
       - name: Run recording permission lifecycle regressions
         if: matrix.configuration == 'Debug'
         run: |
