@@ -16,6 +16,9 @@ struct GameView: View {
     
     @State private var errorMessage: String?
     @State private var showError = false
+    @State private var syncMessage = "Checking saved practice…"
+    @State private var isSyncing = false
+    @State private var savedProgress: UserProgress?
     @State private var processingTask: Task<Void, Never>?
     @State private var isRecording = false
     @State private var showResults = false
@@ -56,6 +59,7 @@ struct GameView: View {
         }
         .task {
             await loadExercises()
+            await syncPractice()
         }
         .onDisappear {
             processingTask?.cancel()
@@ -79,7 +83,6 @@ struct GameView: View {
                     },
                     onRetry: {
                         showResults = false
-                        attemptNumber += 1
                     }
                 )
             }
@@ -93,6 +96,16 @@ struct GameView: View {
                 .font(.caption)
                 .foregroundColor(.white)
                 .padding(.top)
+            VStack(spacing: 4) {
+                if let progress = savedProgress {
+                    Text("Saved practice: \(progress.totalSessions) attempts · \(progress.currentStreak)-day streak")
+                }
+                Text(syncMessage)
+                Button("Retry sync") { Task { await syncPractice() } }
+                    .disabled(isSyncing)
+            }
+            .font(.caption)
+            .foregroundColor(.white)
             // Top bar
             HStack {
                 Button(action: { dismiss() }) {
@@ -352,6 +365,15 @@ struct GameView: View {
             )
             try Task.checkCancellation()
             
+            // Persist before applying game effects so a failed network save can
+            // retry independently without playing the battle or rewards again.
+            try await PracticeOutbox.shared.enqueue(
+                word: exercise.word, score: result.overallScore,
+                timeSpent: Date().timeIntervalSince(sessionStartTime), attemptNumber: attemptNumber
+            )
+            try Task.checkCancellation()
+            attemptNumber += 1
+
             // Apply damage to monster
             battleState.attack(accuracy: result.overallScore)
             
@@ -362,7 +384,6 @@ struct GameView: View {
             )
             
             pronunciationResult = result
-            isProcessing = false
             
             // Check if monster is defeated
             if battleState.isMonsterDefeated {
@@ -375,7 +396,7 @@ struct GameView: View {
                     showResults = true
                 }
             }
-            
+            await syncPractice()
         } catch {
             if !Task.isCancelled { reportError(error.localizedDescription) }
         }
@@ -386,7 +407,8 @@ struct GameView: View {
     func loadExercises() async {
         errorMessage = nil
         do {
-            exercises = try await APIService.shared.getAdaptiveExercises(userId: "ios_user", count: 5)
+            let userId = try await PracticeOutbox.shared.userId()
+            exercises = try await APIService.shared.getAdaptiveExercises(userId: userId, count: 5)
             try Task.checkCancellation()
             guard let first = exercises.first else {
                 errorMessage = "No exercises are available. Please try again later."
@@ -399,6 +421,24 @@ struct GameView: View {
         }
     }
     
+    func syncPractice() async {
+        guard !isSyncing else { return }
+        isSyncing = true
+        defer { isSyncing = false }
+        do {
+            try await PracticeOutbox.shared.flush { attempt in
+                try await APIService.shared.savePracticeSession(session: attempt)
+            }
+            let userId = try await PracticeOutbox.shared.userId()
+            savedProgress = try await APIService.shared.getUserProgress(userId: userId)
+            let pending = try await PracticeOutbox.shared.pendingCount()
+            syncMessage = pending == 0 ? "Practice is saved" : "\(pending) attempts waiting to sync"
+        } catch {
+            savedProgress = nil
+            syncMessage = "Sync unavailable. Saved attempts will retry when you return or tap Retry sync."
+        }
+    }
+
     private func reportError(_ message: String) {
         errorMessage = message
         showError = true
