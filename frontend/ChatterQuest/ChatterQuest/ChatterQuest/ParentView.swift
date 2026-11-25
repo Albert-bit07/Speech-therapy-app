@@ -99,13 +99,16 @@ struct ParentView: View {
         }
     }
 
-    private func saveNotes(_ updated: [TherapyNote]) {
+    @discardableResult
+    private func saveNotes(_ updated: [TherapyNote]) -> Bool {
         do {
             try noteStore.save(updated)
             notes = updated
             noteError = nil
+            return true
         } catch {
             noteError = "Notes could not be saved. Check the note limits or available storage; your saved notes have not changed."
+            return false
         }
     }
 }
@@ -506,7 +509,8 @@ struct ActionButton: View {
 
 struct AddNoteView: View {
     @Environment(\.dismiss) var dismiss
-    let onSave: (TherapyNote) -> Void
+    let onSave: (TherapyNote) -> Bool
+    @State private var saveFailed = false
     
     @State private var title = ""
     @State private var content = ""
@@ -553,11 +557,16 @@ struct AddNoteView: View {
                             date: formatDate(Date()),
                             category: selectedCategory
                         )
-                        onSave(note)
-                        dismiss()
+                        if onSave(note) { dismiss() }
+                        else { saveFailed = true }
                     }
                     .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || title.count > 200 || content.count > 10_000)
                 }
+            }
+            .alert("Note was not saved", isPresented: $saveFailed) {
+                Button("OK", role: .cancel) { }
+            } message: {
+                Text("Your draft is still here. Check available storage and try again.")
             }
         }
     }
