@@ -26,6 +26,7 @@ struct GameView: View {
     @State private var recordingPulse = false
     @State private var isProcessing = false
     @State private var audioRecorder: AVAudioRecorder?
+    @State private var permissionGate = RecordingPermissionGate()
     @State private var speechSynthesizer = AVSpeechSynthesizer()
     @State private var recordedAudioURL: URL?
     @State private var pronunciationResult: PronunciationResult?
@@ -58,11 +59,13 @@ struct GameView: View {
                 loadingView
             }
         }
+        .onAppear { permissionGate.activate() }
         .task {
             await loadExercises()
             await syncPractice()
         }
         .onDisappear {
+            permissionGate.deactivate()
             processingTask?.cancel()
             speechSynthesizer.stopSpeaking(at: .immediate)
             audioRecorder?.stop()
@@ -263,7 +266,7 @@ struct GameView: View {
                     .foregroundColor(.white)
                 }
             }
-            .disabled(isProcessing || battleState.isMonsterDefeated)
+            .disabled(isProcessing || permissionGate.isPending || battleState.isMonsterDefeated)
             .padding(.bottom, 20)
             
             // Player health
@@ -291,8 +294,10 @@ struct GameView: View {
     // MARK: - Audio Recording
     
     func startRecording() {
+        guard !isRecording, !isProcessing, let token = permissionGate.begin() else { return }
         AVAudioSession.sharedInstance().requestRecordPermission { granted in
             DispatchQueue.main.async {
+                guard self.permissionGate.complete(token) else { return }
                 if granted {
                     self.setupRecording()
                 } else {
@@ -303,6 +308,7 @@ struct GameView: View {
     }
     
     func setupRecording() {
+        guard permissionGate.isActive, !isRecording, !isProcessing else { return }
         speechSynthesizer.stopSpeaking(at: .immediate)
         let audioSession = AVAudioSession.sharedInstance()
         
@@ -346,6 +352,7 @@ struct GameView: View {
         recordingPulse = false
         
         if let audioURL = recordedAudioURL {
+            isProcessing = true
             processingTask = Task {
                 await processRecording(audioURL: audioURL)
             }
@@ -353,13 +360,12 @@ struct GameView: View {
     }
     
     func processRecording(audioURL: URL) async {
-        guard let exercise = currentExercise else { return }
-        
         isProcessing = true
         defer {
             isProcessing = false
             discardRecording()
         }
+        guard let exercise = currentExercise else { return }
 
         do {
             let audioData = try Data(contentsOf: audioURL)
