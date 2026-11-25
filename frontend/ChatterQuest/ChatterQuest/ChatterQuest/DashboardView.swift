@@ -127,7 +127,7 @@ struct DashboardView: View {
                     // Quick stats cards
                     HStack(spacing: 16) {
                         StatCard(
-                            title: "Streak",
+                            title: "Win streak",
                             value: "\(rewardsManager.currentStreak)",
                             subtitle: "days",
                             icon: "flame.fill",          // ← String (SF Symbol name)
@@ -329,7 +329,7 @@ struct StreakCard: View {
             
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 8) {
-                    Text("\(currentStreak) Day Streak!")
+                    Text("\(currentStreak) Win Streak!")
                         .font(.headline)
                         .foregroundColor(.white)
                     
@@ -339,7 +339,7 @@ struct StreakCard: View {
                     }
                 }
                 
-                Text("Longest: \(longestStreak) days")
+                Text("Longest: \(longestStreak) wins")
                     .font(.caption)
                     .foregroundColor(.white.opacity(0.7))
             }
@@ -347,7 +347,7 @@ struct StreakCard: View {
             Spacer()
             
             VStack(alignment: .trailing, spacing: 4) {
-                Text("+\(currentStreak * 2)")
+                Text("+\(min(currentStreak, 10) * 2)")
                     .font(.title3)
                     .fontWeight(.bold)
                     .foregroundColor(.sunshine)

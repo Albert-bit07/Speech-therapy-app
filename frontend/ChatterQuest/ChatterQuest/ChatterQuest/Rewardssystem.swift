@@ -155,7 +155,7 @@ class RewardsManager: ObservableObject {
         
         // Streak bonus
         if earnedStars > 0 {
-            let streakBonus = min(currentStreak * 2, 20) // Max 20 bonus coins from streak
+            let streakBonus = min(currentStreak, 10) * 2 // Max 20 bonus coins from streak
             earnedCoins += streakBonus
         }
         
@@ -184,7 +184,7 @@ class RewardsManager: ObservableObject {
         checkAchievements()
     }
     
-    /// Reset daily streak (call this when user misses a day)
+    /// Reset the local sequence of rewarded wins.
     func resetStreak() {
         currentStreak = 0
     }
@@ -303,7 +303,7 @@ enum AchievementType: String, Codable, CaseIterable {
         case .fivePractices: return "Getting Started"
         case .tenPractices: return "Dedicated Learner"
         case .threeStreak: return "On a Roll"
-        case .weekStreak: return "Week Warrior"
+        case .weekStreak: return "Winning Streak"
         case .starCollector: return "Star Collector"
         case .coinMaster: return "Coin Master"
         case .perfectScore: return "Perfection"
@@ -315,8 +315,8 @@ enum AchievementType: String, Codable, CaseIterable {
         case .firstWord: return "Practiced your first word!"
         case .fivePractices: return "Completed 5 practice sessions"
         case .tenPractices: return "Completed 10 practice sessions"
-        case .threeStreak: return "3 days in a row!"
-        case .weekStreak: return "7 days in a row!"
+        case .threeStreak: return "3 rewarded wins in a row!"
+        case .weekStreak: return "7 rewarded wins in a row!"
         case .starCollector: return "Collected 50 stars"
         case .coinMaster: return "Earned 500 coins"
         case .perfectScore: return "Got a perfect score!"
