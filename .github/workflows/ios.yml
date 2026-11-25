@@ -50,3 +50,8 @@ jobs:
         run: |
           swiftc frontend/ChatterQuest/ChatterQuest/ChatterQuest/FloatingGeometry.swift frontend/tests/FloatingGeometryTests.swift -o /tmp/geometry-tests
           /tmp/geometry-tests
+      - name: Run recording permission lifecycle regressions
+        if: matrix.configuration == 'Debug'
+        run: |
+          swiftc frontend/ChatterQuest/ChatterQuest/ChatterQuest/RecordingPermissionGate.swift frontend/tests/RecordingPermissionTests.swift -o /tmp/permission-tests
+          /tmp/permission-tests
