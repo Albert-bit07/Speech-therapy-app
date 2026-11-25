@@ -1,15 +1,23 @@
 import unittest
+import tempfile
+from pathlib import Path
+from unittest.mock import patch
+from services.session_store import SessionStore
 from datetime import datetime, timedelta, timezone
 import httpx
-from main import app, sessions_db, calculate_streak, calculate_longest_streak, generate_weekly_progress
+from main import app, calculate_streak, calculate_longest_streak, generate_weekly_progress
 
 class ProgressTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
-        sessions_db.clear()
+        self.directory = tempfile.TemporaryDirectory()
+        self.store = SessionStore(Path(self.directory.name) / 'sessions.sqlite3')
+        self.store_patch = patch('main.get_session_store', return_value=self.store)
+        self.store_patch.start()
         self.client = httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url='http://test')
     async def asyncTearDown(self):
         await self.client.aclose()
-        sessions_db.clear()
+        self.store_patch.stop()
+        self.directory.cleanup()
     def payload(self, identifier='one', user='alice', score=.95, timestamp=None):
         return {'user_id':user,'session_id':identifier,'timestamp':(timestamp or datetime.now(timezone.utc)).isoformat(),
                 'word':'rain','language':'en','pronunciation_result':{'overall_score':score},'time_spent':12,'attempt_number':1}
@@ -61,4 +69,36 @@ class ProgressTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(response.status_code,422)
         future=self.payload(timestamp=datetime.now(timezone.utc)+timedelta(days=1))
         self.assertEqual((await self.client.post('/api/sessions',json=future)).status_code,422)
-        self.assertEqual(len(sessions_db),0)
+        self.assertEqual(len(self.store.for_user('alice')),0)
+
+    async def test_restart_preserves_api_progress_and_retry_semantics(self):
+        payload = self.payload()
+        self.assertEqual((await self.client.post('/api/sessions', json=payload)).status_code, 200)
+        before = (await self.client.get('/api/progress/alice')).json()
+        with patch('main.get_session_store', return_value=SessionStore(self.store.path)) as provider:
+            after = await self.client.get('/api/progress/alice')
+            self.assertEqual(after.json(), before)
+            provider.assert_called_once()  # Aggregates share a single read snapshot.
+            retry = await self.client.post('/api/sessions', json=payload)
+            self.assertEqual(retry.status_code, 200)
+            self.assertEqual(retry.json()['new_achievements'], [])
+            conflict = await self.client.post('/api/sessions', json={**payload, 'word': 'changed'})
+            self.assertEqual(conflict.status_code, 409)
+
+    async def test_storage_failure_returns_retryable_error_without_credit(self):
+        import sqlite3
+        with patch.object(self.store, 'save', side_effect=sqlite3.OperationalError('disk error')):
+            response = await self.client.post('/api/sessions', json=self.payload())
+            self.assertEqual(response.status_code, 503)
+            self.assertNotIn('disk error', response.text)
+        self.assertEqual(self.store.for_user('alice'), [])
+        with patch.object(self.store, 'for_user', side_effect=sqlite3.OperationalError('disk error')):
+            self.assertEqual((await self.client.get('/api/progress/alice')).status_code, 503)
+
+    async def test_content_limits_do_not_create_records(self):
+        payload = self.payload()
+        for invalid in [dict(payload, user_id='x' * 129), dict(payload, session_id='x' * 129),
+                        dict(payload, word='x' * 65536)]:
+            response = await self.client.post('/api/sessions', json=invalid)
+            self.assertEqual(response.status_code, 422)
+        self.assertEqual(self.store.for_user('alice'), [])

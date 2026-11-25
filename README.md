@@ -11,7 +11,7 @@ The interface turns word practice into short monster battles, rewards and progre
 
 **Ownership:** collaborative work by Albert Mejooli and frontend contributors visible in history. Albert's commits cover [backend implementation](https://github.com/Albert-bit07/Speech-therapy-app/commits/main/backend); frontend/game and demo contributions are shared.
 
-**Stack:** SwiftUI/AVFoundation · FastAPI/Pydantic · librosa/NumPy · PocketSphinx · in-memory Python state · local iOS preferences.
+**Stack:** SwiftUI/AVFoundation · FastAPI/Pydantic · librosa/NumPy · PocketSphinx · SQLite session storage · local iOS preferences.
 
 [Setup and demo](docs/demo.md) · [Engineering details and blockers](docs/project-overview.md)
 
@@ -24,7 +24,7 @@ flowchart TD
   A --> F[FastAPI routes]
   F --> S[Audio decode and scoring service]
   S --> P[Experimental PocketSphinx scoring]
-  F --> D[(In-memory sessions and progress)]
+  F --> D[(SQLite iOS sessions)]
 ```
 
 Source-derived diagram. [GameView.swift](frontend/ChatterQuest/ChatterQuest/ChatterQuest/GameView.swift) sends recorded audio through [APIService.swift](frontend/ChatterQuest/ChatterQuest/ChatterQuest/APIService.swift); [main.py](backend/main.py) accepts multipart word/language fields and legacy query parameters. Compilation and controlled API tests do not establish a successful device-to-backend recording or valid pronunciation assessment.
@@ -61,7 +61,7 @@ The original README linked [this author-provided YouTube recording](https://yout
 
 The backend suite has 28 tests, with Python 3.11 CI enforcing the development lock and checking dependency consistency: generated WAV decoding, repeat-attempt progress, invalid audio, and multipart/query compatibility. Scoring is controlled in tests. A hosted macOS workflow builds the actual iOS simulator target in Debug and Release; its first baseline exposed missing MockAPIService references, now replaced with the existing API client. Seven controlled URLSession regression scenarios cover successful JSON, malformed JSON, empty exercises, HTTP errors and transport failures. Real pronunciation accuracy, microphone/device behavior and a full app demonstration remain unverified.
 
-The backend has no authentication or durable database. iOS analysis uses a fixed `ios_user` and disables progress recording. iOS progress now derives counts, rewards, streaks and weekly activity from accepted session records; empty history stays empty. Audio decoding and request-format defects have regression coverage; real model output and complete game integration still need validation. No clinical dataset, train/test split, phoneme accuracy, therapy outcome or privacy-compliance validation is provided. Use synthetic/non-sensitive recordings only. Repository configuration includes a tracked `.env`; do not copy its contents into documentation or deployment settings.
+The backend has no authentication. iOS sessions persist in SQLite; legacy web analysis progress remains in memory. iOS analysis uses a fixed `ios_user` and disables progress recording. iOS progress now derives counts, rewards, streaks and weekly activity from accepted session records; empty history stays empty. Audio decoding and request-format defects have regression coverage; real model output and complete game integration still need validation. No clinical dataset, train/test split, phoneme accuracy, therapy outcome or privacy-compliance validation is provided. Use synthetic/non-sensitive recordings only. Repository configuration includes a tracked `.env`; do not copy its contents into documentation or deployment settings.
 
 ## Audio/progress repair — 2026-10-20
 
@@ -77,7 +77,7 @@ The iOS endpoint also accepts multipart `target_word`/`language` fields used by 
 
 Practice dates use UTC. Multiple sessions on one day count once toward streak length; the current streak can end today or yesterday, while a longer gap resets it. Empty history returns zero counts, zero streaks and seven empty days. Sound-improvement lists remain empty until supported by real per-sound history.
 
-These are summaries of client-reported sessions, not verified pronunciation measurements. Storage is in memory, unauthenticated user IDs are not an authorization boundary, and sessions disappear on restart. Four additional ASGI/regression tests cover empty history, real aggregates, duplicate/conflicting sessions, user isolation, calendar gaps and input rejection. No iOS device or scoring-quality validation is implied.
+These are summaries of client-reported sessions, not verified pronunciation measurements. iOS sessions persist across worker and server restarts. Unauthenticated user IDs are not an authorization boundary. ASGI and storage regressions cover empty history, aggregates, duplicate/conflicting sessions, user isolation, calendar gaps, input rejection, rollback and concurrent writes from separate processes. No iOS device or scoring-quality validation is implied.
 
 ## Scoring availability and provenance
 
@@ -144,3 +144,26 @@ uv pip compile backend/requirements.txt --python-version 3.11 --constraint backe
 The production resolution is constrained to the tested development versions.
 Hashes verify artifact identity, not model accuracy or vulnerability freedom.
 CI separately scans installed application dependencies with pip-audit.
+
+### Durable session storage
+
+Set `SPEECH_SESSION_DB` to an absolute SQLite file path on persistent local storage;
+the default is `backend/data/sessions.sqlite3`. The parent directory is created on
+first use. Keep that directory private to the server account and back it up with
+SQLite-aware tooling. Do not use an ephemeral container filesystem or a shared
+network filesystem. Multiple workers on the same host can share the file.
+
+A transaction compares the user-scoped session ID, inserts an unseen session and
+counts that user's sessions before committing. Identical retries return success
+without additional credit or milestone notifications; changed content returns 409.
+Storage failures return 503 so callers can retry the same ID and payload. Progress
+aggregates use one read snapshot. IDs are limited to 128 characters and canonical
+session content to 64 KiB. Non-finite JSON numbers are rejected.
+
+Stored fields are user/session IDs, UTC time, score and a content fingerprint for
+conflict detection. Audio, words and transcripts are not retained in this table;
+fingerprints and identifiers are still sensitive metadata. Existing in-memory
+sessions cannot be recovered after a restart. The legacy `/progress` endpoint and
+adaptive sound history remain separate, in-memory features. This is a local demo
+store with no authentication, retention policy or production data-management UI.
+Scores are client-reported, not validated clinical measurements.
