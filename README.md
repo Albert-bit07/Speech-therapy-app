@@ -187,3 +187,13 @@ audio. A corrupt file fails visibly instead of silently discarding pending work.
 Local battle rewards remain a separate game mechanic from server progress totals.
 Permanent server rejection requires investigation; retries do not discard a record.
 There is no background delivery guarantee or full clinical scoring validation.
+
+The Debug CI job also compiles the actual Swift API client/outbox and runs it
+against the actual FastAPI session/progress routes. A loopback proxy forwards saves
+but drops their acknowledgments. Both the client and backend then restart, and the
+same queued attempt is replayed without extra progress or repeated achievements.
+This exercises the HTTP/storage boundary with a synthetic score, not microphone,
+UI or scoring-model behavior. To reproduce on macOS, install the locked backend
+dependencies, compile `APIService.swift` with `frontend/tests/SessionHTTPTests.swift`,
+and run `python frontend/tests/session_http.py /path/to/compiled-test` using that
+Python environment.

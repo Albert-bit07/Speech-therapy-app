@@ -35,9 +35,11 @@ class APIService {
     static let shared = APIService()
     
     private let session: URLSession
+    private let baseURL: String
 
-    init(session: URLSession = .shared) {
+    init(session: URLSession = .shared, baseURL: String = APIConfig.baseURL) {
         self.session = session
+        self.baseURL = baseURL
     }
     
     // MARK: - Speech Analysis Endpoint
@@ -50,7 +52,7 @@ class APIService {
         targetLanguage: String = "en"
     ) async throws -> PronunciationResult {
         
-        let urlString = "\(APIConfig.baseURL)/analyze-pronunciation"
+        let urlString = "\(baseURL)/analyze-pronunciation"
         guard let url = URL(string: urlString) else {
             throw APIError.invalidURL
         }
@@ -129,7 +131,7 @@ class APIService {
     /// Backend endpoint: GET /api/progress/{userId}
     func getUserProgress(userId: String) async throws -> UserProgress {
         
-        let urlString = "\(APIConfig.baseURL)/progress/\(userId)"
+        let urlString = "\(baseURL)/progress/\(userId)"
         guard let url = URL(string: urlString) else {
             throw APIError.invalidURL
         }
@@ -175,7 +177,7 @@ class APIService {
     /// Backend endpoint: POST /api/sessions
     func savePracticeSession(session: PracticeSession) async throws -> SessionResponse {
         
-        let urlString = "\(APIConfig.baseURL)/sessions"
+        let urlString = "\(baseURL)/sessions"
         guard let url = URL(string: urlString) else {
             throw APIError.invalidURL
         }
@@ -237,7 +239,7 @@ class APIService {
         difficulty: String = "medium"
     ) async throws -> [Exercise] {
         
-        var components = URLComponents(string: "\(APIConfig.baseURL)/exercises/adaptive")!
+        var components = URLComponents(string: "\(baseURL)/exercises/adaptive")!
         components.queryItems = [
             URLQueryItem(name: "user_id", value: userId),
             URLQueryItem(name: "count", value: String(count)),
@@ -454,7 +456,7 @@ extension APIService {
     func testConnection() async -> Bool {
         do {
             // Try to hit the health endpoint
-            let healthURL = APIConfig.baseURL.replacingOccurrences(of: "/api", with: "/health")
+            let healthURL = baseURL.replacingOccurrences(of: "/api", with: "/health")
             guard let url = URL(string: healthURL) else { return false }
             
             let (_, response) = try await URLSession.shared.data(from: url)
