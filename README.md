@@ -13,6 +13,8 @@ The interface turns word practice into short monster battles, rewards and progre
 
 **Stack:** SwiftUI/AVFoundation · FastAPI/Pydantic · librosa/NumPy · PocketSphinx · SQLite session storage · local iOS preferences.
 
+See [local reward and purchase persistence](docs/local-reward-storage.md) for restart behavior and legacy-data limits.
+
 [Setup and demo](docs/demo.md) · [Engineering details and blockers](docs/project-overview.md)
 
 ## Architecture and current integration boundary
