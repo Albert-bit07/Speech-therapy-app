@@ -413,9 +413,16 @@ struct FloatingElements: View {
                         )
                 }
             }
-            .onAppear {
+            .task {
                 generatePositions(in: geometry.size)
-                animateElements()
+                while !Task.isCancelled {
+                    do { try await Task.sleep(nanoseconds: 3_000_000_000) }
+                    catch { return }
+                    guard !Task.isCancelled else { return }
+                    withAnimation(.easeInOut(duration: 3)) {
+                        generatePositions(in: geometry.size)
+                    }
+                }
             }
         }
     }
@@ -423,22 +430,12 @@ struct FloatingElements: View {
     func generatePositions(in size: CGSize) {
         positions = (0..<6).map { _ in
             (
-                x: CGFloat.random(in: 50...size.width - 50),
-                y: CGFloat.random(in: 100...size.height - 100)
+                x: CGFloat.random(in: FloatingGeometry.insetRange(length: size.width, inset: 50)),
+                y: CGFloat.random(in: FloatingGeometry.insetRange(length: size.height, inset: 100))
             )
         }
     }
     
-    func animateElements() {
-        Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { _ in
-            withAnimation(.easeInOut(duration: 3)) {
-                for i in positions.indices {
-                    positions[i].x += CGFloat.random(in: -50...50)
-                    positions[i].y += CGFloat.random(in: -30...30)
-                }
-            }
-        }
-    }
 }
 
 

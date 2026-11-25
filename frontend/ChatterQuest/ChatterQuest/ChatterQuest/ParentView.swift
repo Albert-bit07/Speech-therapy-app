@@ -37,6 +37,12 @@ struct ParentView: View {
                 
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: 24) {
+                        Text("Preview only: statistics, charts and initial notes are examples, not your practice data. Added notes last only while this screen remains loaded. Goals, export and reminders are not available yet.")
+                            .font(.callout)
+                            .foregroundColor(.navy)
+                            .padding()
+                            .background(Color.yellow.opacity(0.15))
+                            .padding(.horizontal)
                         // Header stats cards
                         HStack(spacing: 16) {
                             StatCard(
@@ -141,10 +147,11 @@ struct ParentView: View {
                         }
                         .padding(.horizontal)
                         .padding(.bottom, 30)
+                        .disabled(true)
                     }
                 }
             }
-            .navigationTitle("Progress Dashboard")
+            .navigationTitle("Parent Preview")
             .navigationBarTitleDisplayMode(.large)
             .sheet(isPresented: $showingAddNote) {
                 AddNoteView { newNote in

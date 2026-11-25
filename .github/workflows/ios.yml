@@ -45,3 +45,8 @@ jobs:
         run: |
           swiftc -target "$(uname -m)-apple-macosx14.0" frontend/ChatterQuest/ChatterQuest/ChatterQuest/Rewardssystem.swift frontend/tests/RewardsTests.swift -o /tmp/rewards-tests
           /tmp/rewards-tests
+      - name: Run compact onboarding geometry regressions
+        if: matrix.configuration == 'Debug'
+        run: |
+          swiftc frontend/ChatterQuest/ChatterQuest/ChatterQuest/FloatingGeometry.swift frontend/tests/FloatingGeometryTests.swift -o /tmp/geometry-tests
+          /tmp/geometry-tests
