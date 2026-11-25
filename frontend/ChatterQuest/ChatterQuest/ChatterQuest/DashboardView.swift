@@ -21,6 +21,7 @@ struct DashboardView: View {
     @State private var showingStore = false
     @State private var showingAchievements = false
     @State private var showLevelUpAnimation = false
+    @State private var rewardsUnavailable = false
     
     var body: some View {
         ZStack {
@@ -126,7 +127,7 @@ struct DashboardView: View {
                     // Quick stats cards
                     HStack(spacing: 16) {
                         StatCard(
-                            title: "Streak",
+                            title: "Win streak",
                             value: "\(rewardsManager.currentStreak)",
                             subtitle: "days",
                             icon: "flame.fill",          // ← String (SF Symbol name)
@@ -202,8 +203,13 @@ struct DashboardView: View {
         .sheet(isPresented: $showingAchievements) {
             AchievementsView(rewardsManager: rewardsManager)
         }
+        .alert("Saved rewards unavailable", isPresented: $rewardsUnavailable) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text("Your saved data has been preserved, but local reward changes cannot be saved until it can be read again.")
+        }
         .onAppear {
-            rewardsManager.loadFromUserDefaults()
+            rewardsUnavailable = !rewardsManager.loadFromUserDefaults()
             
             withAnimation(.spring(response: 0.8, dampingFraction: 0.7)) {
                 isVisible = true
@@ -323,7 +329,7 @@ struct StreakCard: View {
             
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 8) {
-                    Text("\(currentStreak) Day Streak!")
+                    Text("\(currentStreak) Win Streak!")
                         .font(.headline)
                         .foregroundColor(.white)
                     
@@ -333,7 +339,7 @@ struct StreakCard: View {
                     }
                 }
                 
-                Text("Longest: \(longestStreak) days")
+                Text("Longest: \(longestStreak) wins")
                     .font(.caption)
                     .foregroundColor(.white.opacity(0.7))
             }
@@ -341,7 +347,7 @@ struct StreakCard: View {
             Spacer()
             
             VStack(alignment: .trailing, spacing: 4) {
-                Text("+\(currentStreak * 2)")
+                Text("+\(min(currentStreak, 10) * 2)")
                     .font(.title3)
                     .fontWeight(.bold)
                     .foregroundColor(.sunshine)
