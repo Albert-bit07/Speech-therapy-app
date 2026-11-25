@@ -384,7 +384,6 @@ struct GameView: View {
             )
             
             pronunciationResult = result
-            isProcessing = false
             
             // Check if monster is defeated
             if battleState.isMonsterDefeated {
