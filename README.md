@@ -7,7 +7,7 @@ The interface turns word practice into short monster battles, rewards and progre
 - SwiftUI screens implement onboarding, word practice, battles, rewards and parent views.
 - GameView records audio with AVAudioRecorder and sends it to the FastAPI client; service failures are visible and scoring is labeled experimental.
 - A separate Python API defines audio-analysis, session, progress and exercise routes.
-- Backend scoring attempts PocketSphinx and returns an unavailable error when it cannot initialize; exercises and feedback use predefined rules and content.
+- Pronunciation assessment explicitly returns unavailable until a defensible assessment method is implemented; a separate PocketSphinx recognition diagnostic and fixed exercise catalog remain available.
 
 **Ownership:** collaborative work by Albert Mejooli and frontend contributors visible in history. Albert's commits cover [backend implementation](https://github.com/Albert-bit07/Speech-therapy-app/commits/main/backend); frontend/game and demo contributions are shared.
 
@@ -53,7 +53,7 @@ cd backend
 python -m uvicorn main:app --host 127.0.0.1 --port 8000
 ```
 
-Then inspect `/health` and `/docs`. Open `frontend/ChatterQuest/ChatterQuest/ChatterQuest.xcodeproj` in Xcode, select a simulator and configure signing/permissions as needed. Simulator and physical-device localhost differ; the API client has a local URL. CI installs the backend dependencies and runs its tests; an actual iOS/backend integration remains unverified. See [known blockers](docs/project-overview.md) before testing audio uploads.
+Then inspect `/health` and `/docs`. Open `frontend/ChatterQuest/ChatterQuest/ChatterQuest.xcodeproj` in Xcode, select a simulator and configure signing/permissions as needed. Simulator and physical-device localhost differ; the API client has a local URL. CI runs the actual Swift client against FastAPI for synthetic-score persistence/retry integration; interactive recording and scoring remain unverified. See [known blockers](docs/project-overview.md) before testing audio uploads.
 
 ## Demo
 
@@ -199,3 +199,16 @@ UI or scoring-model behavior. To reproduce on macOS, install the locked backend
 dependencies, compile `APIService.swift` with `frontend/tests/SessionHTTPTests.swift`,
 and run `python frontend/tests/session_http.py /path/to/compiled-test` using that
 Python environment.
+
+### Parent progress, notes and settings
+
+The Parent tab loads server-confirmed practice counts, UTC streaks and daily totals
+for this installation, with explicit loading, empty and error states. Notes remain
+local in Application Support: up to 100 notes, 200-character titles and 10,000-character
+content. Writes are atomic; corrupt files are preserved and failed saves keep the
+editor draft open. Deleting app data removes this local state. No multi-device
+synchronization or parental access lock is implemented.
+
+Settings supports editing the displayed name and enabling/disabling Hear Word
+playback. Exercises and word hints use English. Other language, theme, voice,
+reminder and security controls are not exposed as working features.
