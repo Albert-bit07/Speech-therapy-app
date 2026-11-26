@@ -14,6 +14,7 @@ struct GameView: View {
     @ObservedObject var rewardsManager: RewardsManager
     @StateObject private var battleState = BattleState()
     
+    @AppStorage("soundEnabled") private var soundEnabled = true
     @State private var errorMessage: String?
     @State private var showError = false
     @State private var syncMessage = "Checking saved practice…"
@@ -58,6 +59,9 @@ struct GameView: View {
             } else {
                 loadingView
             }
+        }
+        .onChange(of: soundEnabled) { _, enabled in
+            if !enabled { speechSynthesizer.stopSpeaking(at: .immediate) }
         }
         .onAppear { permissionGate.activate() }
         .task {
@@ -218,7 +222,7 @@ struct GameView: View {
                 )
             }
             .scaleEffect(scale)
-            .disabled(isRecording || isProcessing)
+            .disabled(!soundEnabled || isRecording || isProcessing)
             .padding(.bottom, 20)
             
             // Attack button (microphone)
@@ -483,7 +487,7 @@ struct GameView: View {
     }
     
     func playWord() {
-        guard let exercise = currentExercise, !isRecording, !isProcessing else { return }
+        guard soundEnabled, let exercise = currentExercise, !isRecording, !isProcessing else { return }
         speechSynthesizer.stopSpeaking(at: .immediate)
         do {
             try AVAudioSession.sharedInstance().setCategory(.playback, mode: .spokenAudio)

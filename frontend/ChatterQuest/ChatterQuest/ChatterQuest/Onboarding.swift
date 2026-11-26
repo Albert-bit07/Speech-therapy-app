@@ -204,13 +204,7 @@ struct NameEntryPage: View {
 struct LanguageSelectionPage: View {
     @Binding var language: String
     
-    let languages = [
-        ("🇺🇸", "English"),
-        ("🇪🇸", "Spanish"),
-        ("🇫🇷", "French"),
-        ("🇩🇪", "German"),
-        ("🇨🇳", "Chinese")
-    ]
+    let languages = [("🇺🇸", "English")]
     
     var body: some View {
         VStack(spacing: 40) {
@@ -220,12 +214,12 @@ struct LanguageSelectionPage: View {
                 Text("🌍")
                     .font(.system(size: 80))
                 
-                Text("Choose your language")
+                Text("Practice language")
                     .font(.system(size: 36, weight: .bold))
                     .foregroundColor(.navy)
                     .multilineTextAlignment(.center)
                 
-                Text("We'll speak in your language!")
+                Text("English word hints and exercises are available. Other languages are not implemented.")
                     .font(.title3)
                     .foregroundColor(.navy.opacity(0.7))
                     .multilineTextAlignment(.center)
