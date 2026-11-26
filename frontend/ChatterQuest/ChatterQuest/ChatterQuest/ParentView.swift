@@ -24,6 +24,7 @@ struct ParentView: View {
     @State private var notesReady = false
     @State private var noteError: String?
     @State private var showingAddNote = false
+    @State private var editingNote: TherapyNote?
 
     var body: some View {
         List {
@@ -56,7 +57,8 @@ struct ParentView: View {
                 }
                 if notesReady && notes.isEmpty { Text("No notes yet.") }
                 ForEach(notes) { note in
-                    NoteCard(note: note, onDelete: { saveNotes(notes.filter { $0.id != note.id }) })
+                    NoteCard(note: note, onEdit: { editingNote = note },
+                             onDelete: { saveNotes(notes.filter { $0.id != note.id }) })
                 }
                 Button("Add note") { showingAddNote = true }
                     .disabled(!notesReady || notes.count >= 100)
@@ -69,6 +71,11 @@ struct ParentView: View {
         }
         .sheet(isPresented: $showingAddNote) {
             AddNoteView { note in saveNotes([note] + notes) }
+        }
+        .sheet(item: $editingNote) { note in
+            AddNoteView(note: note) { updated in
+                saveNotes(notes.map { $0.id == updated.id ? updated : $0 })
+            }
         }
     }
 
@@ -365,6 +372,7 @@ struct SessionRow: View {
 
 struct NoteCard: View {
     let note: TherapyNote
+    let onEdit: () -> Void
     let onDelete: () -> Void
     @State private var showingDetails = false
     
@@ -396,7 +404,7 @@ struct NoteCard: View {
                 Spacer()
                 
                 Menu {
-                    Button(action: {}) {
+                    Button(action: onEdit) {
                         Label("Edit", systemImage: "pencil")
                     }
                     Button(role: .destructive, action: onDelete) {
@@ -510,11 +518,20 @@ struct ActionButton: View {
 struct AddNoteView: View {
     @Environment(\.dismiss) var dismiss
     let onSave: (TherapyNote) -> Bool
+    private let original: TherapyNote?
     @State private var saveFailed = false
     
     @State private var title = ""
     @State private var content = ""
     @State private var selectedCategory: NoteCategory = .observation
+
+    init(note: TherapyNote? = nil, onSave: @escaping (TherapyNote) -> Bool) {
+        original = note
+        self.onSave = onSave
+        _title = State(initialValue: note?.title ?? "")
+        _content = State(initialValue: note?.content ?? "")
+        _selectedCategory = State(initialValue: note?.category ?? .observation)
+    }
     
     var body: some View {
         NavigationView {
@@ -540,7 +557,7 @@ struct AddNoteView: View {
                         .frame(minHeight: 150)
                 }
             }
-            .navigationTitle("New Note")
+            .navigationTitle(original == nil ? "New Note" : "Edit Note")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -552,9 +569,10 @@ struct AddNoteView: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
                         let note = TherapyNote(
+                            id: original?.id ?? UUID(),
                             title: title,
                             content: content,
-                            date: formatDate(Date()),
+                            date: original?.date ?? formatDate(Date()),
                             category: selectedCategory
                         )
                         if onSave(note) { dismiss() }

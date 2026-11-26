@@ -15,6 +15,12 @@ struct TherapyNoteTests {
         var restored = TherapyNoteStore(url: url)
         let loaded = try restored.load()
         check(loaded.count == 1 && loaded[0].id == note.id && loaded[0].content == note.content)
+        let edited = TherapyNote(id: note.id, title: "Updated practice", content: "Worked on sun", date: note.date, category: .goal)
+        try restored.save([edited])
+        var afterEditRestart = TherapyNoteStore(url: url)
+        let editedNotes = try afterEditRestart.load()
+        check(editedNotes.count == 1 && editedNotes[0].id == note.id)
+        check(editedNotes[0].date == note.date && editedNotes[0].content == edited.content && editedNotes[0].category == .goal)
         do { try restored.save([note, note]); fatalError("Duplicate IDs accepted") } catch {}
         check(try restored.load().count == 1)
         try restored.save([])
